@@ -13,6 +13,7 @@ import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { getAccessToken, getServerUrl } from '../lib/api';
 import { useSession } from '../lib/session';
+import { setViewerAssets } from '../lib/viewer';
 import { fontSize, radius, spacing } from '../lib/theme';
 import type { Asset } from '../types';
 
@@ -128,7 +129,13 @@ export function PhotoGrid({
     (asset: Asset) => (
       <Pressable
         key={asset.id}
-        onPress={() => router.push(`/photo/${asset.id}`)}
+        onPress={() => {
+          // Hand the viewer the list it should page through. Without this it
+          // only knows the one asset it was addressed with, and swiping has
+          // nowhere to go.
+          setViewerAssets(assets);
+          router.push(`/photo/${asset.id}`);
+        }}
         style={{ width: tileSize, height: tileSize, marginRight: GAP, marginBottom: GAP }}
       >
         <Image
@@ -158,7 +165,7 @@ export function PhotoGrid({
         {asset.isFavorite && <View style={styles.favouriteDot} />}
       </Pressable>
     ),
-    [base, token, tileSize, router, styles],
+    [base, token, tileSize, router, styles, assets],
   );
 
   if (loading) {

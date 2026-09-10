@@ -58,13 +58,19 @@
       ],
       "expo-asset",
       "expo-font",
-      "expo-build-properties",
       [
         "expo-build-properties",
         {
           "android": {
             "usesCleartextTraffic": true
           }
+        }
+      ],
+      [
+        "expo-video",
+        {
+          "supportsPictureInPicture": true,
+          "supportsBackgroundPlayback": false
         }
       ]
     ],
