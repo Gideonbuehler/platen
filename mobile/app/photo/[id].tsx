@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   Dimensions,
   FlatList,
   Pressable,
@@ -11,9 +12,11 @@ import {
   View,
 } from 'react-native';
 import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api, getAccessToken, getServerUrl } from '../../src/lib/api';
 import { getViewerAssets, indexOfAsset } from '../../src/lib/viewer';
 import { useSession } from '../../src/lib/session';
@@ -46,9 +49,8 @@ function formatBytes(bytes: number): string {
  * One video page.
  *
  * Its own component so the player hook is scoped to a single asset — a hook
- * cannot be called per item inside a list render. Playback is tied to whether
- * this page is the visible one, or every video in the window would play at
- * once, several soundtracks over each other.
+ * cannot be called per item inside a list render. Playback follows visibility,
+ * or every video in the mounted window would play at once.
  */
 function VideoPage({
   uri,
@@ -73,9 +75,9 @@ function VideoPage({
   }, [isActive, player]);
 
   return (
-    <View style={{ width, height, alignItems: 'center', justifyContent: 'center' }}>
-      {/* The poster sits underneath so the frame is filled while the stream
-          buffers, rather than a black rectangle. */}
+    <View style={{ width, height }}>
+      {/* Behind the player so the frame is filled while the stream buffers,
+          instead of a black rectangle. */}
       <Image
         source={{ uri: poster }}
         style={StyleSheet.absoluteFill}
@@ -98,22 +100,47 @@ export default function PhotoScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { palette } = useSession();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const styles = makeStyles(palette);
 
-  const listRef = useRef<FlatList<Asset>>(null);
   const { width, height } = Dimensions.get('window');
 
-  // The list the grid was showing. A cold deep link finds nothing here and
-  // falls back to fetching just the one asset.
-  const [assets, setAssets] = useState<Asset[]>(() => {
-    const shared = getViewerAssets();
-    return indexOfAsset(id) >= 0 ? shared : [];
-  });
+  const [assets, setAssets] = useState<Asset[]>(() =>
+    indexOfAsset(id) >= 0 ? getViewerAssets() : [],
+  );
   const [index, setIndex] = useState(() => Math.max(0, indexOfAsset(id)));
-  const [showInfo, setShowInfo] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [base, setBase] = useState<string | null>(null);
   const [token, setToken] = useState<string | null>(null);
+
+  /**
+   * Chrome and the info sheet are overlays, never layout.
+   *
+   * The previous version reserved a quarter of the screen for metadata that
+   * was usually hidden, so every photo sat in a letterbox above dead space.
+   * Media now fills the screen and everything else floats above it.
+   */
+  const [chromeVisible, setChromeVisible] = useState(true);
+  const [infoOpen, setInfoOpen] = useState(false);
+
+  const chrome = useRef(new Animated.Value(1)).current;
+  const sheet = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(chrome, {
+      toValue: chromeVisible ? 1 : 0,
+      duration: 180,
+      useNativeDriver: true,
+    }).start();
+  }, [chromeVisible, chrome]);
+
+  useEffect(() => {
+    Animated.timing(sheet, {
+      toValue: infoOpen ? 1 : 0,
+      duration: 220,
+      useNativeDriver: true,
+    }).start();
+  }, [infoOpen, sheet]);
 
   useEffect(() => {
     void (async () => {
@@ -143,16 +170,15 @@ export default function PhotoScreen() {
     },
   ).current;
 
-  // 60% means a page counts as current only once it clearly dominates the
-  // screen, so playback does not start on a video half-swiped past.
+  // 60%: a page is only "current" once it clearly dominates the screen, so
+  // playback never starts on a video half-swiped past.
   const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 60 }).current;
 
   const toggleFavourite = useCallback(async () => {
     if (!asset) return;
     const next = !asset.isFavorite;
 
-    // Optimistic: a heart that waits for a round trip feels broken, and being
-    // wrong costs one wrong icon until the next load.
+    // Optimistic: a heart that waits for a round trip feels broken.
     setAssets((list) =>
       list.map((item) => (item.id === asset.id ? { ...item, isFavorite: next } : item)),
     );
@@ -175,14 +201,12 @@ export default function PhotoScreen() {
         onPress: async () => {
           try {
             await api.deleteAssets([asset.id]);
-            // Drop it from the pager and stay put, rather than kicking the
-            // user back to the grid after every single delete.
             setAssets((list) => {
               const next = list.filter((item) => item.id !== asset.id);
               if (next.length === 0) router.back();
               return next;
             });
-            setIndex((current) => Math.min(current, assets.length - 2));
+            setIndex((current) => Math.max(0, Math.min(current, assets.length - 2)));
           } catch (err) {
             Alert.alert('Could not delete', err instanceof Error ? err.message : 'Unknown error');
           }
@@ -219,35 +243,10 @@ export default function PhotoScreen() {
 
   return (
     <View style={styles.root}>
-      <Stack.Screen
-        options={{
-          headerTitle: () => (
-            <Text style={styles.headerTitle}>
-              {assets.length > 1 ? `${index + 1} of ${assets.length}` : ''}
-            </Text>
-          ),
-          headerRight: () => (
-            <View style={styles.actions}>
-              <Pressable onPress={toggleFavourite} hitSlop={10}>
-                <Ionicons
-                  name={asset.isFavorite ? 'heart' : 'heart-outline'}
-                  size={22}
-                  color={asset.isFavorite ? palette.accent : '#fff'}
-                />
-              </Pressable>
-              <Pressable onPress={() => setShowInfo((v) => !v)} hitSlop={10}>
-                <Ionicons name="information-circle-outline" size={22} color="#fff" />
-              </Pressable>
-              <Pressable onPress={confirmDelete} hitSlop={10}>
-                <Ionicons name="trash-outline" size={22} color="#fff" />
-              </Pressable>
-            </View>
-          ),
-        }}
-      />
+      <Stack.Screen options={{ headerShown: false }} />
 
+      {/* ---- Media, edge to edge -------------------------------------- */}
       <FlatList
-        ref={listRef}
         data={assets}
         keyExtractor={(item) => item.id}
         horizontal
@@ -257,8 +256,6 @@ export default function PhotoScreen() {
         getItemLayout={getItemLayout}
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={viewabilityConfig}
-        // Keep the neighbours mounted so a swipe reveals a loaded image, but
-        // no more than that — a mounted video page holds a decoder.
         windowSize={3}
         maxToRenderPerBatch={3}
         renderItem={({ item, index: itemIndex }) => {
@@ -271,19 +268,19 @@ export default function PhotoScreen() {
                 poster={preview}
                 isActive={itemIndex === index}
                 width={width}
-                height={height * 0.75}
+                height={height}
               />
             );
           }
 
           return (
             <Pressable
-              onPress={() => setShowInfo((v) => !v)}
-              style={{ width, height: height * 0.75, alignItems: 'center', justifyContent: 'center' }}
+              onPress={() => setChromeVisible((v) => !v)}
+              style={{ width, height }}
             >
               <Image
                 source={{ uri: preview }}
-                style={{ width, height: height * 0.75 }}
+                style={{ width, height }}
                 contentFit="contain"
                 transition={140}
                 cachePolicy="memory-disk"
@@ -294,107 +291,262 @@ export default function PhotoScreen() {
         }}
       />
 
-      {showInfo && wallClock && (
-        <ScrollView style={styles.panel} contentContainerStyle={styles.panelContent}>
-          <Text style={styles.panelTitle}>{asset.originalFilename}</Text>
+      {/* ---- Top chrome ------------------------------------------------ */}
+      <Animated.View
+        style={[styles.topBar, { opacity: chrome, paddingTop: insets.top + spacing.sm }]}
+        pointerEvents={chromeVisible ? 'auto' : 'none'}
+      >
+        {/* A gradient rather than a flat bar: icons stay legible over a bright
+            photo without stamping a solid slab across the top of it. */}
+        <LinearGradient
+          colors={['rgba(0,0,0,0.65)', 'transparent']}
+          style={StyleSheet.absoluteFill}
+        />
+        <Pressable onPress={() => router.back()} hitSlop={12} style={styles.iconButton}>
+          <Ionicons name="chevron-back" size={26} color="#fff" />
+        </Pressable>
 
-          <Row
-            label="Taken"
-            value={wallClock.toLocaleDateString(undefined, {
-              weekday: 'long',
-              year: 'numeric',
-              month: 'long',
-              day: 'numeric',
-              timeZone: 'UTC',
-            })}
-            palette={palette}
-          />
+        {assets.length > 1 && (
+          <Text style={styles.counter}>
+            {index + 1} / {assets.length}
+          </Text>
+        )}
+      </Animated.View>
 
-          <Row
-            label="File"
-            value={`${formatBytes(asset.fileSize)}${
-              asset.width && asset.height ? ` · ${asset.width} × ${asset.height}` : ''
-            }`}
-            palette={palette}
-          />
+      {/* ---- Bottom actions -------------------------------------------- */}
+      <Animated.View
+        style={[styles.bottomBar, { opacity: chrome, paddingBottom: insets.bottom + spacing.md }]}
+        pointerEvents={chromeVisible ? 'auto' : 'none'}
+      >
+        <LinearGradient
+          colors={['transparent', 'rgba(0,0,0,0.7)']}
+          style={StyleSheet.absoluteFill}
+        />
 
-          {asset.exif?.make && (
-            <Row
-              label="Camera"
-              value={`${asset.exif.make} ${asset.exif.model ?? ''}`.trim()}
-              palette={palette}
-            />
-          )}
+        <Action
+          icon={asset.isFavorite ? 'heart' : 'heart-outline'}
+          label="Favourite"
+          tint={asset.isFavorite ? palette.accent : '#fff'}
+          onPress={toggleFavourite}
+          palette={palette}
+        />
+        <Action
+          icon="information-circle-outline"
+          label="Info"
+          onPress={() => setInfoOpen(true)}
+          palette={palette}
+        />
+        <Action icon="trash-outline" label="Delete" onPress={confirmDelete} palette={palette} />
+      </Animated.View>
 
-          {asset.exif?.lens && <Row label="Lens" value={asset.exif.lens} palette={palette} />}
+      {/* ---- Info sheet ------------------------------------------------- */}
+      {infoOpen && (
+        <>
+          <Animated.View style={[styles.scrim, { opacity: sheet }]}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={() => setInfoOpen(false)} />
+          </Animated.View>
 
-          {(asset.exif?.fNumber || asset.exif?.iso) && (
-            <View style={styles.chips}>
-              {asset.exif.fNumber ? <Text style={styles.chip}>ƒ/{asset.exif.fNumber}</Text> : null}
-              {asset.exif.exposureTime ? (
-                <Text style={styles.chip}>{asset.exif.exposureTime}s</Text>
-              ) : null}
-              {asset.exif.iso ? <Text style={styles.chip}>ISO {asset.exif.iso}</Text> : null}
-              {asset.exif.focalLength ? (
-                <Text style={styles.chip}>{Math.round(asset.exif.focalLength)}mm</Text>
-              ) : null}
-            </View>
-          )}
-        </ScrollView>
+          <Animated.View
+            style={[
+              styles.sheet,
+              {
+                paddingBottom: insets.bottom + spacing.lg,
+                transform: [
+                  { translateY: sheet.interpolate({ inputRange: [0, 1], outputRange: [400, 0] }) },
+                ],
+              },
+            ]}
+          >
+            <View style={styles.grabber} />
+
+            <ScrollView contentContainerStyle={styles.sheetContent}>
+              <Text style={styles.sheetTitle} numberOfLines={1}>
+                {asset.originalFilename}
+              </Text>
+
+              {wallClock && (
+                <Text style={styles.sheetDate}>
+                  {wallClock.toLocaleDateString(undefined, {
+                    weekday: 'long',
+                    day: 'numeric',
+                    month: 'long',
+                    year: 'numeric',
+                    timeZone: 'UTC',
+                  })}
+                </Text>
+              )}
+
+              {(asset.exif?.fNumber || asset.exif?.iso || asset.exif?.focalLength) && (
+                <View style={styles.chips}>
+                  {asset.exif.fNumber ? (
+                    <Text style={styles.chip}>ƒ/{asset.exif.fNumber}</Text>
+                  ) : null}
+                  {asset.exif.exposureTime ? (
+                    <Text style={styles.chip}>{asset.exif.exposureTime}s</Text>
+                  ) : null}
+                  {asset.exif.iso ? <Text style={styles.chip}>ISO {asset.exif.iso}</Text> : null}
+                  {asset.exif.focalLength ? (
+                    <Text style={styles.chip}>{Math.round(asset.exif.focalLength)}mm</Text>
+                  ) : null}
+                </View>
+              )}
+
+              <View style={styles.divider} />
+
+              {asset.exif?.make && (
+                <Detail
+                  icon="camera-outline"
+                  primary={`${asset.exif.make} ${asset.exif.model ?? ''}`.trim()}
+                  secondary={asset.exif.lens ?? undefined}
+                  palette={palette}
+                />
+              )}
+
+              <Detail
+                icon="document-outline"
+                primary={formatBytes(asset.fileSize)}
+                secondary={
+                  asset.width && asset.height ? `${asset.width} × ${asset.height}` : undefined
+                }
+                palette={palette}
+              />
+
+              {asset.exif?.latitude != null && asset.exif?.longitude != null && (
+                <Detail
+                  icon="location-outline"
+                  primary={
+                    [asset.exif.city, asset.exif.country].filter(Boolean).join(', ') || 'Location'
+                  }
+                  secondary={`${asset.exif.latitude.toFixed(4)}, ${asset.exif.longitude.toFixed(4)}`}
+                  palette={palette}
+                />
+              )}
+            </ScrollView>
+          </Animated.View>
+        </>
       )}
     </View>
   );
 }
 
-function Row({
+function Action({
+  icon,
   label,
-  value,
+  tint = '#fff',
+  onPress,
   palette,
 }: {
+  icon: keyof typeof Ionicons.glyphMap;
   label: string;
-  value: string;
+  tint?: string;
+  onPress: () => void;
   palette: ReturnType<typeof useSession>['palette'];
 }) {
   const styles = makeStyles(palette);
   return (
-    <View style={styles.row}>
-      <Text style={styles.label}>{label}</Text>
-      <Text style={styles.value} numberOfLines={2}>
-        {value}
-      </Text>
+    <Pressable style={styles.action} onPress={onPress} hitSlop={8}>
+      <Ionicons name={icon} size={24} color={tint} />
+      <Text style={[styles.actionLabel, { color: tint }]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function Detail({
+  icon,
+  primary,
+  secondary,
+  palette,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  primary: string;
+  secondary?: string;
+  palette: ReturnType<typeof useSession>['palette'];
+}) {
+  const styles = makeStyles(palette);
+  return (
+    <View style={styles.detail}>
+      <Ionicons name={icon} size={19} color={palette.textTertiary} />
+      <View style={styles.detailText}>
+        <Text style={styles.detailPrimary}>{primary}</Text>
+        {secondary && <Text style={styles.detailSecondary}>{secondary}</Text>}
+      </View>
     </View>
   );
 }
 
 const makeStyles = (p: ReturnType<typeof useSession>['palette']) =>
   StyleSheet.create({
-    root: { flex: 1, backgroundColor: '#000', justifyContent: 'center' },
+    root: { flex: 1, backgroundColor: '#000' },
     center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#000' },
-    headerTitle: { color: '#fff', fontSize: fontSize.sm, fontVariant: ['tabular-nums'] },
-    actions: { flexDirection: 'row', gap: spacing.lg, paddingRight: spacing.sm },
     error: { color: p.danger, fontSize: fontSize.sm, padding: spacing.xl, textAlign: 'center' },
-    panel: {
+
+    topBar: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: spacing.sm,
+      paddingBottom: spacing.lg,
+    },
+    iconButton: { padding: spacing.xs },
+    counter: {
+      color: 'rgba(255,255,255,0.9)',
+      fontSize: fontSize.sm,
+      fontVariant: ['tabular-nums'],
+      paddingRight: spacing.md,
+    },
+
+    bottomBar: {
+      position: 'absolute',
+      bottom: 0,
+      left: 0,
+      right: 0,
+      flexDirection: 'row',
+      justifyContent: 'space-around',
+      alignItems: 'flex-end',
+      paddingTop: spacing.xxl,
+    },
+    action: { alignItems: 'center', gap: 3, paddingHorizontal: spacing.lg },
+    actionLabel: { fontSize: 11 },
+
+    scrim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)' },
+    sheet: {
       position: 'absolute',
       left: 0,
       right: 0,
       bottom: 0,
-      maxHeight: '45%',
+      maxHeight: '62%',
       backgroundColor: p.surfaceRaised,
       borderTopLeftRadius: radius.xl,
       borderTopRightRadius: radius.xl,
     },
-    panelContent: { padding: spacing.lg, gap: spacing.md },
-    panelTitle: { fontSize: fontSize.md, fontWeight: '600', color: p.textPrimary },
-    row: { flexDirection: 'row', justifyContent: 'space-between', gap: spacing.md },
-    label: { fontSize: fontSize.sm, color: p.textTertiary },
-    value: { flexShrink: 1, fontSize: fontSize.sm, color: p.textPrimary, textAlign: 'right' },
+    grabber: {
+      alignSelf: 'center',
+      width: 36,
+      height: 4,
+      marginTop: spacing.sm,
+      borderRadius: radius.full,
+      backgroundColor: p.borderDefault,
+    },
+    sheetContent: { padding: spacing.lg, gap: spacing.md },
+    sheetTitle: { fontSize: fontSize.lg, fontWeight: '600', color: p.textPrimary },
+    sheetDate: { fontSize: fontSize.sm, color: p.textSecondary, marginTop: -spacing.sm },
     chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
     chip: {
-      paddingHorizontal: spacing.sm,
-      paddingVertical: 3,
-      borderRadius: radius.sm,
+      paddingHorizontal: spacing.md,
+      paddingVertical: 5,
+      borderRadius: radius.full,
       backgroundColor: p.surfaceOverlay,
       color: p.textSecondary,
       fontSize: fontSize.xs,
+      overflow: 'hidden',
     },
+    divider: { height: 1, backgroundColor: p.borderSubtle },
+    detail: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+    detailText: { flex: 1 },
+    detailPrimary: { fontSize: fontSize.sm, color: p.textPrimary },
+    detailSecondary: { fontSize: fontSize.xs, color: p.textTertiary, marginTop: 1 },
   });
