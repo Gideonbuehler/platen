@@ -442,8 +442,17 @@ export const api = {
     ),
 
   // --- search ---
-  search: (query: string, threshold = 0.18) =>
-    request<SearchHit[]>('/search', { method: 'POST', body: { query, threshold } }),
+  /**
+   * Sensitivity is deliberately not defaulted here. The server owns what the
+   * threshold means — it has changed units once already, from a raw similarity
+   * floor to a margin over a baseline prompt — and a stale copy of that number
+   * living in the client silently filtered out every result.
+   */
+  search: (query: string, threshold?: number) =>
+    request<SearchHit[]>('/search', {
+      method: 'POST',
+      body: threshold === undefined ? { query } : { query, threshold },
+    }),
   searchMetadata: (query: string) =>
     request<Asset[]>(`/search/metadata?q=${encodeURIComponent(query)}`),
   searchStatus: () =>
