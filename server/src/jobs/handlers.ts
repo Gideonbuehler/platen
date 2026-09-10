@@ -17,7 +17,7 @@ import {
   readImageMetadata,
   readVideoMetadata,
 } from '../services/media.js';
-import { embedImage, toVectorLiteral } from '../services/ml.js';
+import { embedImage, getMlStatus, toVectorLiteral } from '../services/ml.js';
 import { enqueue } from './queue.js';
 
 interface AssetRow {
@@ -137,12 +137,22 @@ async function handleThumbnail(assetId: string): Promise<void> {
   const outDir = thumbsPath(thumbDir(asset.owner_id, asset.id));
 
   try {
-    if (asset.type === 'video') {
-      await generateVideoDerivatives(absolute, outDir, asset.duration_ms);
-    } else {
-      await generateImageDerivatives(absolute, outDir);
-    }
-    await sql`UPDATE assets SET thumb_status = 'ready' WHERE id = ${assetId}`;
+    const derivatives =
+      asset.type === 'video'
+        ? await generateVideoDerivatives(absolute, outDir, asset.duration_ms)
+        : await generateImageDerivatives(absolute, outDir);
+
+    // Trust the rendered preview over the file header. This is the only place
+    // that knows what shape the image actually ended up, and keeping the two in
+    // step is what stops the grid drawing a landscape tile around an upright
+    // photo. COALESCE guards the case where dimensions could not be read at all.
+    await sql`
+      UPDATE assets SET
+        thumb_status = 'ready',
+        width  = COALESCE(${derivatives.width}, width),
+        height = COALESCE(${derivatives.height}, height)
+      WHERE id = ${assetId}
+    `;
   } catch (err) {
     // Mark failed so the UI can show a placeholder instead of a spinner
     // forever, then rethrow so the queue applies its retry policy.
@@ -162,6 +172,15 @@ async function handleThumbnail(assetId: string): Promise<void> {
  */
 async function handleEmbedding(assetId: string): Promise<void> {
   if (!config.ENABLE_ML) return;
+
+  // The first-run download takes minutes. Awaiting it here would pin a worker
+  // slot per concurrent embedding job and stall thumbnail generation, which is
+  // what the user is actually waiting to see. Back off and let the retry
+  // schedule pick this up once the model is ready.
+  const ml = getMlStatus();
+  if (ml.state === 'loading') {
+    throw new Error('Search model is still loading; embedding will retry shortly.');
+  }
 
   const asset = await loadAsset(assetId);
   if (!asset) return;

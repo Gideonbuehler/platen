@@ -1,3 +1,5 @@
+import { rm } from 'node:fs/promises';
+import { join } from 'node:path';
 import { config } from '../config.js';
 
 /**
@@ -22,10 +24,47 @@ type TextPipeline = {
   model: any;
 };
 
-let visionPromise: Promise<VisionPipeline> | null = null;
-let textPromise: Promise<TextPipeline> | null = null;
+let vision: VisionPipeline | null = null;
+let text: TextPipeline | null = null;
 let transformers: any = null;
 let mlUnavailableReason: string | null = null;
+
+const ML_CACHE_DIR = '/data/ml-cache';
+
+export type MlState = 'disabled' | 'loading' | 'ready' | 'error';
+
+let state: MlState = 'disabled';
+let stateMessage = '';
+
+export function getMlStatus(): { state: MlState; message: string; model: string } {
+  return { state, message: stateMessage, model: config.ML_MODEL };
+}
+
+/**
+ * A half-written model file poisons the cache permanently.
+ *
+ * If the container is stopped while weights are downloading, transformers.js
+ * leaves the partial file in place and every later load fails with an opaque
+ * "Protobuf parsing failed" — search stays broken forever with no hint that the
+ * fix is simply to download it again. Detecting that signature and clearing the
+ * cache makes the next attempt self-healing.
+ */
+function isCorruptModelError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return (
+    message.includes('Protobuf parsing failed') ||
+    message.includes('Failed to load model') ||
+    message.includes('invalid model') ||
+    message.includes('Deserialize tensor') ||
+    message.includes('unexpected end')
+  );
+}
+
+async function purgeModelCache(): Promise<void> {
+  // Only ever the configured model's own directory, never the whole cache.
+  const target = join(ML_CACHE_DIR, config.ML_MODEL);
+  await rm(target, { recursive: true, force: true }).catch(() => {});
+}
 
 async function loadTransformers(): Promise<any> {
   if (transformers) return transformers;
@@ -46,38 +85,80 @@ async function loadTransformers(): Promise<any> {
   }
 }
 
-async function getVision(): Promise<VisionPipeline> {
-  if (!visionPromise) {
-    visionPromise = (async () => {
-      const t = await loadTransformers();
-      const [processor, model] = await Promise.all([
-        t.AutoProcessor.from_pretrained(config.ML_MODEL),
-        t.CLIPVisionModelWithProjection.from_pretrained(config.ML_MODEL, { dtype: 'fp32' }),
-      ]);
-      return { processor, model };
-    })().catch((err) => {
-      visionPromise = null; // let a later job retry after, say, a network blip
-      throw err;
-    });
-  }
-  return visionPromise;
+/**
+ * Single gate for loading both halves of the model.
+ *
+ * Everything that needs CLIP goes through here, and concurrent callers share
+ * one promise. That matters more than it looks: the embedding worker runs
+ * several jobs at once, and without a shared gate each one starts its own load
+ * against a cache directory that a first-run download is still writing into.
+ * Each then sees a half-written file, calls it corrupt, and deletes the very
+ * download in progress — a loop that never converges.
+ */
+let initPromise: Promise<void> | null = null;
+let purgeAttempted = false;
+
+async function loadBoth(): Promise<void> {
+  const t = await loadTransformers();
+
+  const [processor, visionModel, tokenizer, textModel] = await Promise.all([
+    t.AutoProcessor.from_pretrained(config.ML_MODEL),
+    t.CLIPVisionModelWithProjection.from_pretrained(config.ML_MODEL, { dtype: 'fp32' }),
+    t.AutoTokenizer.from_pretrained(config.ML_MODEL),
+    t.CLIPTextModelWithProjection.from_pretrained(config.ML_MODEL, { dtype: 'fp32' }),
+  ]);
+
+  vision = { processor, model: visionModel };
+  text = { tokenizer, model: textModel };
 }
 
-async function getText(): Promise<TextPipeline> {
-  if (!textPromise) {
-    textPromise = (async () => {
-      const t = await loadTransformers();
-      const [tokenizer, model] = await Promise.all([
-        t.AutoTokenizer.from_pretrained(config.ML_MODEL),
-        t.CLIPTextModelWithProjection.from_pretrained(config.ML_MODEL, { dtype: 'fp32' }),
-      ]);
-      return { tokenizer, model };
-    })().catch((err) => {
-      textPromise = null;
+async function ensureModels(): Promise<void> {
+  if (state === 'ready' && vision && text) return;
+  if (initPromise) return initPromise;
+
+  initPromise = (async () => {
+    state = 'loading';
+    stateMessage = 'Downloading and loading the search model...';
+
+    try {
+      await loadBoth();
+    } catch (err) {
+      // Retry exactly once, and only after clearing a cache we believe is
+      // corrupt. Bounded by `purgeAttempted` so a genuinely broken environment
+      // cannot turn into an endless download loop.
+      if (isCorruptModelError(err) && !purgeAttempted) {
+        purgeAttempted = true;
+        await purgeModelCache();
+        vision = null;
+        text = null;
+        await loadBoth();
+      } else {
+        throw err;
+      }
+    }
+
+    state = 'ready';
+    stateMessage = '';
+    // A later corruption (a bad disk, a truncated restore) deserves its own
+    // chance to self-heal, so the guard is released once a load succeeds.
+    purgeAttempted = false;
+  })()
+    .catch((err) => {
+      state = 'error';
+      stateMessage = isCorruptModelError(err)
+        ? 'The cached model file could not be read. It will be downloaded again on the next attempt.'
+        : err instanceof Error
+          ? err.message
+          : String(err);
+      vision = null;
+      text = null;
       throw err;
+    })
+    .finally(() => {
+      initPromise = null;
     });
-  }
-  return textPromise;
+
+  return initPromise;
 }
 
 /**
@@ -106,8 +187,9 @@ function assertDim(vec: Float32Array): Float32Array {
 
 /** Embeds an image file. Feed it the preview WebP, not the 50 MP original. */
 export async function embedImage(imagePath: string): Promise<Float32Array> {
+  await ensureModels();
   const t = await loadTransformers();
-  const { processor, model } = await getVision();
+  const { processor, model } = vision!;
 
   const image = await t.RawImage.read(imagePath);
   const inputs = await processor(image);
@@ -118,7 +200,8 @@ export async function embedImage(imagePath: string): Promise<Float32Array> {
 
 /** Embeds a search phrase into the same space as the image embeddings. */
 export async function embedText(query: string): Promise<Float32Array> {
-  const { tokenizer, model } = await getText();
+  await ensureModels();
+  const { tokenizer, model } = text!;
 
   const inputs = tokenizer([query], { padding: true, truncation: true });
   const { text_embeds } = await model(inputs);
@@ -141,12 +224,18 @@ export function isMlEnabled(): boolean {
  */
 export async function warmUp(log: (msg: string) => void): Promise<void> {
   if (!config.ENABLE_ML) {
+    state = 'disabled';
+    stateMessage = 'Semantic search is turned off (ENABLE_ML=false).';
     log('Semantic search is disabled (ENABLE_ML=false).');
     return;
   }
   try {
     log(`Loading CLIP model ${config.ML_MODEL} (first run downloads ~250 MB)...`);
-    await getVision();
+
+    // Both halves load together. Warming only the vision model is what let a
+    // corrupt text model go unnoticed until someone actually searched.
+    await ensureModels();
+
     log('CLIP model ready. Semantic search is available.');
   } catch (err) {
     log(

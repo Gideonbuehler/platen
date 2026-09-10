@@ -3,10 +3,10 @@ import { z } from 'zod';
 import type { SearchHit } from '@aperture/shared';
 import { config } from '../config.js';
 import { sql } from '../db/index.js';
-import { badRequest } from '../lib/errors.js';
+import { badRequest, HttpError } from '../lib/errors.js';
 import { assetColumnsWithExif, toAssetDto, type AssetRow } from '../lib/mappers.js';
 import { auth, requireAuth } from '../middleware/auth.js';
-import { embedText, toVectorLiteral } from '../services/ml.js';
+import { embedText, getMlStatus, toVectorLiteral } from '../services/ml.js';
 
 export async function searchRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', requireAuth);
@@ -23,7 +23,7 @@ export async function searchRoutes(app: FastifyInstance): Promise<void> {
     const body = z
       .object({
         query: z.string().min(1).max(300),
-        threshold: z.number().min(0).max(1).default(0.18),
+        threshold: z.number().min(0).max(1).default(0.15),
         limit: z.number().int().min(1).max(200).default(80),
       })
       .parse(request.body);
@@ -32,7 +32,29 @@ export async function searchRoutes(app: FastifyInstance): Promise<void> {
       throw badRequest('Semantic search is disabled on this server (ENABLE_ML=false).');
     }
 
-    const vector = toVectorLiteral(await embedText(body.query));
+    const status = getMlStatus();
+    if (status.state === 'loading') {
+      throw new HttpError(
+        503,
+        'model_loading',
+        'The search model is still loading. This takes a few minutes the first time.',
+      );
+    }
+
+    let vector: string;
+    try {
+      vector = toVectorLiteral(await embedText(body.query));
+    } catch (err) {
+      // A model that cannot load is not an unexpected server fault; say so
+      // plainly rather than returning an opaque 500.
+      throw new HttpError(
+        503,
+        'model_unavailable',
+        `Search is temporarily unavailable: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
     const maxDistance = 1 - body.threshold;
 
     const rows = await sql<(AssetRow & { distance: number })[]>`
@@ -47,9 +69,29 @@ export async function searchRoutes(app: FastifyInstance): Promise<void> {
       LIMIT ${body.limit}
     `;
 
-    return rows.map(
+    const hits = rows.map(
       (row): SearchHit => ({ asset: toAssetDto(row), score: 1 - Number(row.distance) }),
     );
+    if (hits.length === 0) return hits;
+
+    /**
+     * Cut relative to the best match, not on an absolute score.
+     *
+     * CLIP similarities live in a narrow band — an unrelated photo scores about
+     * 0.19 and a good match about 0.30 — so any fixed threshold either admits
+     * the whole library or rejects all of it, and the right value shifts with
+     * the phrasing of the query. Anchoring the cutoff to the top hit behaves
+     * consistently whether the library holds three photos or fifty thousand.
+     *
+     * When everything scores about the same, nothing is meaningfully more
+     * relevant than anything else, and the whole set is returned rather than an
+     * arbitrary slice of it.
+     */
+    const RELATIVE_WINDOW = 0.05;
+    const best = hits[0]!.score;
+    const floor = Math.max(body.threshold, best - RELATIVE_WINDOW);
+
+    return hits.filter((hit) => hit.score >= floor);
   });
 
   /**
@@ -94,11 +136,16 @@ export async function searchRoutes(app: FastifyInstance): Promise<void> {
       LEFT JOIN asset_embeddings em ON em.asset_id = a.id
       WHERE a.owner_id = ${userId} AND a.deleted_at IS NULL
     `;
+    const status = getMlStatus();
     return {
       enabled: config.ENABLE_ML,
-      model: config.ML_MODEL,
+      model: status.model,
+      state: status.state,
+      message: status.message,
       total: row?.total ?? 0,
       indexed: row?.indexed ?? 0,
+      /** Assets still waiting on an embedding job. */
+      pending: Math.max(0, (row?.total ?? 0) - (row?.indexed ?? 0)),
     };
   });
 }

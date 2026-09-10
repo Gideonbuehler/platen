@@ -99,6 +99,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const active = queue.filter((item) => item.status === 'uploading' || item.status === 'pending');
   const failed = queue.filter((item) => item.status === 'error');
 
+  // Dismiss the upload toast on its own once everything has settled. Failures
+  // linger noticeably longer, because they are the only case where the toast
+  // carries information the user still needs to read.
+  useEffect(() => {
+    if (queue.length === 0 || active.length > 0) return;
+
+    const delay = failed.length > 0 ? 15_000 : 4_000;
+    const timer = setTimeout(clearFinished, delay);
+    return () => clearTimeout(timer);
+  }, [queue.length, active.length, failed.length, clearFinished]);
+
   return (
     <div className="shell">
       <aside className={`shell-sidebar${mobileNavOpen ? ' is-open' : ''}`}>

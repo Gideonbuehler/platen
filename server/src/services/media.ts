@@ -134,11 +134,16 @@ export async function readImageMetadata(path: string): Promise<MediaMetadata> {
       tiff: true,
       exif: true,
       gps: true,
-      translateValues: true,
+      translateValues: false,
       reviveValues: true,
     });
 
     if (tags) {
+      // For RAW the sharp probe above failed, so the orientation the camera
+      // recorded is the only one available.
+      if (typeof tags.Orientation === 'number' && tags.Orientation >= 1 && tags.Orientation <= 8) {
+        result.orientation = tags.Orientation;
+      }
       result.exif = {
         make: str(tags.Make),
         model: str(tags.Model),
@@ -163,7 +168,7 @@ export async function readImageMetadata(path: string): Promise<MediaMetadata> {
         const exifWidth = num(tags.ImageWidth ?? tags.ExifImageWidth ?? tags.PixelXDimension);
         const exifHeight = num(tags.ImageHeight ?? tags.ExifImageHeight ?? tags.PixelYDimension);
         if (exifWidth && exifHeight) {
-          const swap = result.orientation >= 5;
+          const swap = QUARTER_TURN.has(result.orientation);
           result.width = swap ? exifHeight : exifWidth;
           result.height = swap ? exifWidth : exifHeight;
         }
@@ -273,7 +278,32 @@ export const isRawExtension = (filename: string): boolean =>
  * Tags are tried largest-first. Sony and Canon use JpgFromRaw, most others use
  * PreviewImage, and ThumbnailImage is the small last resort.
  */
-export async function extractEmbeddedPreview(sourcePath: string): Promise<string | null> {
+export interface EmbeddedPreview {
+  path: string;
+  /**
+   * EXIF orientation taken from the RAW, not from the extracted JPEG.
+   *
+   * Cameras write the embedded preview in sensor orientation and record the
+   * rotation only in the RAW's own metadata — the extracted JPEG carries no
+   * Orientation tag whatsoever. sharp's `.rotate()` therefore has nothing to
+   * act on, and every portrait shot renders on its side. The rotation has to be
+   * carried across explicitly.
+   */
+  orientation: number;
+}
+
+async function readRawOrientation(sourcePath: string): Promise<number> {
+  try {
+    // translateValues off: we want the numeric code, not "Rotate 270 CW".
+    const tags = await exifr.parse(sourcePath, { tiff: true, translateValues: false });
+    const value = tags?.Orientation;
+    return typeof value === 'number' && value >= 1 && value <= 8 ? value : 1;
+  } catch {
+    return 1;
+  }
+}
+
+export async function extractEmbeddedPreview(sourcePath: string): Promise<EmbeddedPreview | null> {
   const tags = ['-JpgFromRaw', '-PreviewImage', '-OtherImage', '-ThumbnailImage'];
 
   for (const tag of tags) {
@@ -283,7 +313,9 @@ export async function extractEmbeddedPreview(sourcePath: string): Promise<string
 
       // exiftool exits 0 with no output when the tag is absent, so size is the
       // real test. Anything under 1 KB is not a usable preview.
-      if (bytes > 1024) return outPath;
+      if (bytes > 1024) {
+        return { path: outPath, orientation: await readRawOrientation(sourcePath) };
+      }
       await rm(outPath, { force: true });
     } catch {
       await rm(outPath, { force: true });
@@ -359,6 +391,60 @@ export async function readVideoMetadata(path: string): Promise<MediaMetadata> {
 export interface Derivatives {
   thumbPath: string;
   previewPath: string;
+  /**
+   * Dimensions of the source we actually decoded, with EXIF orientation
+   * applied — i.e. the shape the rendered preview really has.
+   *
+   * These are authoritative for layout. Taking them from the original file's
+   * header instead is what produced sideways-looking grids: `.rotate()` turns a
+   * portrait shot upright in the preview, but the header still reports the
+   * landscape sensor dimensions, so the grid reserved a landscape tile for an
+   * upright image. Worse for RAW, where the header cannot be read at all.
+   */
+  width: number | null;
+  height: number | null;
+}
+
+/**
+ * Applies an EXIF orientation by hand.
+ *
+ * Used when the file being decoded has lost the tag — a RAW's embedded preview
+ * — so `.rotate()` with no argument would be a no-op. Codes 2, 4, 5 and 7 also
+ * involve a mirror, which is rare but cheap to handle correctly.
+ */
+function applyOrientation(pipeline: sharp.Sharp, orientation: number): sharp.Sharp {
+  switch (orientation) {
+    case 2: return pipeline.flop();
+    case 3: return pipeline.rotate(180);
+    case 4: return pipeline.flip();
+    case 5: return pipeline.rotate(90).flop();
+    case 6: return pipeline.rotate(90);
+    case 7: return pipeline.rotate(270).flop();
+    case 8: return pipeline.rotate(270);
+    default: return pipeline;
+  }
+}
+
+const QUARTER_TURN = new Set([5, 6, 7, 8]);
+
+/** Post-rotation dimensions of whatever file sharp is about to render. */
+async function orientedDimensions(
+  path: string,
+  explicitOrientation?: number,
+): Promise<{ width: number | null; height: number | null }> {
+  try {
+    const meta = await sharp(path).metadata();
+    // Orientations 5-8 mean the stored pixels are rotated a quarter turn, so
+    // width and height swap once the image has been straightened.
+    const effective = explicitOrientation ?? meta.orientation ?? 1;
+    const swap = QUARTER_TURN.has(effective);
+    return {
+      width: (swap ? meta.height : meta.width) ?? null,
+      height: (swap ? meta.width : meta.height) ?? null,
+    };
+  } catch {
+    return { width: null, height: null };
+  }
 }
 
 /**
@@ -383,7 +469,7 @@ export async function generateImageDerivatives(
   // not to understand it either, we still try the embedded preview before
   // giving up, since plenty of odd formats carry one.
   let decodeFrom = sourcePath;
-  let extracted: string | null = null;
+  let extracted: EmbeddedPreview | null = null;
 
   if (isRawExtension(sourcePath)) {
     extracted = await extractEmbeddedPreview(sourcePath);
@@ -393,12 +479,19 @@ export async function generateImageDerivatives(
           'The original is stored safely, but no thumbnail can be generated.',
       );
     }
-    decodeFrom = extracted;
+    decodeFrom = extracted.path;
   }
 
   try {
-    const render = async (from: string): Promise<void> => {
-      const input = () => sharp(from, { failOn: 'none', limitInputPixels: 1_000_000_000 }).rotate();
+    const render = async (from: string, explicitOrientation?: number): Promise<void> => {
+      // With an explicit orientation the source has no usable tag of its own,
+      // so it is applied by hand; otherwise `.rotate()` reads the file's EXIF.
+      const input = () => {
+        const pipeline = sharp(from, { failOn: 'none', limitInputPixels: 1_000_000_000 });
+        return explicitOrientation && explicitOrientation !== 1
+          ? applyOrientation(pipeline, explicitOrientation)
+          : pipeline.rotate();
+      };
 
       await input()
         .resize(THUMB_SIZE, THUMB_SIZE, { fit: 'inside', withoutEnlargement: true })
@@ -412,7 +505,7 @@ export async function generateImageDerivatives(
     };
 
     try {
-      await render(decodeFrom);
+      await render(decodeFrom, extracted?.orientation);
     } catch (err) {
       if (extracted) throw err; // already the fallback path; nothing left to try
 
@@ -420,12 +513,17 @@ export async function generateImageDerivatives(
       if (!rescue) throw err;
 
       extracted = rescue;
-      await render(rescue);
+      decodeFrom = rescue.path;
+      await render(rescue.path, rescue.orientation);
     }
 
-    return { thumbPath, previewPath };
+    return {
+      thumbPath,
+      previewPath,
+      ...(await orientedDimensions(decodeFrom, extracted?.orientation)),
+    };
   } finally {
-    if (extracted) await rm(extracted, { force: true });
+    if (extracted) await rm(extracted.path, { force: true });
   }
 }
 
@@ -463,6 +561,8 @@ export async function generateVideoDerivatives(
       await run('ffmpeg', ['-v', 'error', '-i', sourcePath, '-frames:v', '1', '-an', '-y', framePath]);
     }
 
+    // ffmpeg writes the poster frame already rotated, so the derivative's own
+    // dimensions are correct and can stand in for the video's.
     return await generateImageDerivatives(framePath, outputDir);
   } finally {
     await rm(framePath, { force: true });

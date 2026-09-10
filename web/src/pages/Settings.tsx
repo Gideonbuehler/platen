@@ -27,7 +27,18 @@ export function SettingsPage() {
   const [newUser, setNewUser] = useState({ email: '', name: '', password: '' });
 
   const { data: stats } = useQuery({ queryKey: ['stats'], queryFn: api.stats });
-  const { data: searchStatus } = useQuery({ queryKey: ['search-status'], queryFn: api.searchStatus });
+  const { data: searchStatus } = useQuery({
+    queryKey: ['search-status'],
+    queryFn: api.searchStatus,
+    // Poll while there is something to watch, so the bar moves on its own
+    // during a first-run model download or a bulk re-index. Stops once idle.
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      if (!data) return 5_000;
+      return data.state === 'loading' || data.pending > 0 ? 5_000 : false;
+    },
+    staleTime: 0,
+  });
   const { data: users } = useQuery({
     queryKey: ['users'],
     queryFn: api.users,
@@ -205,15 +216,63 @@ export function SettingsPage() {
               <dt>Total size</dt>
               <dd>{formatBytes(stats.usageBytes)}</dd>
             </div>
-            {searchStatus?.enabled && (
-              <div>
-                <dt>Search index</dt>
-                <dd>
-                  {searchStatus.indexed.toLocaleString()} / {searchStatus.total.toLocaleString()}
-                </dd>
-              </div>
-            )}
+
           </dl>
+        )}
+      </section>
+
+      {/* ---- Search index -------------------------------------------------- */}
+      <section className="settings-section card">
+        <h2>Search index</h2>
+
+        {searchStatus ? (
+          (() => {
+            const percent =
+              searchStatus.total > 0
+                ? Math.round((searchStatus.indexed / searchStatus.total) * 100)
+                : 100;
+            const complete = searchStatus.pending === 0 && searchStatus.total > 0;
+
+            return (
+              <>
+                <div className="settings-index-head">
+                  <span className={`settings-dot is-${searchStatus.state}`} aria-hidden="true" />
+                  <span className="settings-index-state">
+                    {searchStatus.state === 'ready' && (complete ? 'Everything is indexed' : 'Indexing')}
+                    {searchStatus.state === 'loading' && 'Loading the search model'}
+                    {searchStatus.state === 'error' && 'Search unavailable'}
+                    {searchStatus.state === 'disabled' && 'Semantic search is turned off'}
+                  </span>
+                </div>
+
+                {searchStatus.enabled && (
+                  <>
+                    <div className="settings-bar">
+                      <div style={{ width: `${percent}%` }} />
+                    </div>
+                    <p className="settings-hint" style={{ marginBottom: 0 }}>
+                      {searchStatus.indexed.toLocaleString()} of{' '}
+                      {searchStatus.total.toLocaleString()} photos indexed
+                      {searchStatus.pending > 0 &&
+                        ` · ${searchStatus.pending.toLocaleString()} still to process`}
+                    </p>
+                  </>
+                )}
+
+                {searchStatus.message && (
+                  <p className={`settings-index-message${searchStatus.state === 'error' ? ' is-error' : ''}`}>
+                    {searchStatus.message}
+                  </p>
+                )}
+
+                <p className="settings-hint" style={{ marginTop: 'var(--space-3)', marginBottom: 0 }}>
+                  Model: <code>{searchStatus.model}</code>
+                </p>
+              </>
+            );
+          })()
+        ) : (
+          <p className="settings-hint">Checking…</p>
         )}
       </section>
 

@@ -352,3 +352,9 @@
     bottom: var(--space-4);
   }
 }
+
+/* The toast fades rather than vanishing, so a self-dismissal does not read as
+   the UI glitching. */
+.shell-uploads {
+  animation: rise-in var(--duration-base) var(--ease);
+}

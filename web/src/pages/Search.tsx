@@ -33,7 +33,7 @@ export function SearchPage() {
 
   const semantic = status?.enabled ?? false;
 
-  const { data: results, isFetching } = useQuery({
+  const { data: results, isFetching, error } = useQuery({
     queryKey: ['search', query, semantic],
     queryFn: async () => {
       if (semantic) {
@@ -114,6 +114,12 @@ export function SearchPage() {
             </p>
           )}
 
+          {error && (
+            <div className="search-error" role="alert">
+              {error instanceof Error ? error.message : 'Search failed.'}
+            </div>
+          )}
+
           <PhotoGrid
             assets={assets}
             onOpen={openAt}
@@ -122,6 +128,12 @@ export function SearchPage() {
             empty={
               isFetching ? (
                 <IconSpinner size={26} />
+              ) : error ? (
+                <div className="search-empty">
+                  <IconSearch size={38} />
+                  <h2>Search unavailable</h2>
+                  <p>{error instanceof Error ? error.message : 'Something went wrong.'}</p>
+                </div>
               ) : (
                 <div className="search-empty">
                   <IconSearch size={38} />

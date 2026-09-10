@@ -229,3 +229,67 @@
     grid-column: span 1;
   }
 }
+
+/* --- search index --------------------------------------------------------- */
+
+.settings-index-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.settings-index-state {
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
+}
+
+/* A single dot carries the state at a glance; the text beside it says the rest. */
+.settings-dot {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: var(--radius-full);
+  background: var(--text-tertiary);
+}
+
+.settings-dot.is-ready {
+  background: var(--success);
+}
+
+.settings-dot.is-loading {
+  background: var(--accent);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+.settings-dot.is-error {
+  background: var(--danger);
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.35; }
+}
+
+.settings-index-message {
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--surface-overlay);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.settings-index-message.is-error {
+  background: var(--danger-muted);
+  color: var(--danger);
+}
+
+.settings-section code {
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-overlay);
+  font-family: var(--font-mono);
+  font-size: 0.95em;
+}

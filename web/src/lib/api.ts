@@ -425,5 +425,13 @@ export const api = {
   searchMetadata: (query: string) =>
     request<Asset[]>(`/search/metadata?q=${encodeURIComponent(query)}`),
   searchStatus: () =>
-    request<{ enabled: boolean; model: string; total: number; indexed: number }>('/search/status'),
+    request<{
+      enabled: boolean;
+      model: string;
+      state: 'disabled' | 'loading' | 'ready' | 'error';
+      message: string;
+      total: number;
+      indexed: number;
+      pending: number;
+    }>('/search/status'),
 };

@@ -124,3 +124,14 @@
   color: var(--text-secondary);
   line-height: 1.6;
 }
+
+.search-error {
+  max-width: 620px;
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--danger-muted);
+  color: var(--danger);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
