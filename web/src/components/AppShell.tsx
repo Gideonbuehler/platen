@@ -18,6 +18,7 @@ import {
   IconSun,
   IconTrash,
   IconUpload,
+  IconUsers,
 } from './Icons';
 import './AppShell.css';
 
@@ -25,6 +26,7 @@ const NAV_ITEMS = [
   { to: '/', label: 'Photos', icon: IconPhotos, end: true },
   { to: '/search', label: 'Search', icon: IconSearch, end: false },
   { to: '/albums', label: 'Albums', icon: IconAlbums, end: false },
+  { to: '/people', label: 'People', icon: IconUsers, end: false },
   { to: '/favorites', label: 'Favourites', icon: IconHeart, end: false },
   { to: '/archive', label: 'Archive', icon: IconArchive, end: false },
   { to: '/trash', label: 'Trash', icon: IconTrash, end: false },

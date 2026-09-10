@@ -39,6 +39,16 @@ export function SettingsPage() {
     },
     staleTime: 0,
   });
+  const { data: faceStatus } = useQuery({
+    queryKey: ['face-status'],
+    queryFn: api.faceStatus,
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      if (!data) return 5_000;
+      return data.state === 'loading' || data.pending > 0 ? 5_000 : false;
+    },
+    staleTime: 0,
+  });
   const { data: users } = useQuery({
     queryKey: ['users'],
     queryFn: api.users,
@@ -84,6 +94,14 @@ export function SettingsPage() {
   const deleteUser = useMutation({
     mutationFn: (id: string) => api.deleteUser(id),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['users'] }),
+  });
+
+  const rescanFaces = useMutation({
+    mutationFn: (full: boolean) => api.rescanFaces(full),
+    onSuccess: (result) => {
+      setMessage({ kind: 'ok', text: `Queued ${result.queued} photo(s) for face scanning.` });
+      void queryClient.invalidateQueries({ queryKey: ['face-status'] });
+    },
   });
 
   const reindex = useMutation({
@@ -271,6 +289,82 @@ export function SettingsPage() {
               </>
             );
           })()
+        ) : (
+          <p className="settings-hint">Checking…</p>
+        )}
+      </section>
+
+      {/* ---- People -------------------------------------------------------- */}
+      <section className="settings-section card">
+        <h2>
+          <IconUsers size={17} />
+          People
+        </h2>
+
+        {faceStatus ? (
+          faceStatus.enabled ? (
+            (() => {
+              const percent =
+                faceStatus.total > 0
+                  ? Math.round((faceStatus.scanned / faceStatus.total) * 100)
+                  : 100;
+              return (
+                <>
+                  <div className="settings-index-head">
+                    <span className={`settings-dot is-${faceStatus.state}`} aria-hidden="true" />
+                    <span className="settings-index-state">
+                      {faceStatus.state === 'ready' &&
+                        (faceStatus.pending === 0 ? 'All photos scanned' : 'Scanning')}
+                      {faceStatus.state === 'loading' && 'Loading face models'}
+                      {faceStatus.state === 'error' && 'Face grouping unavailable'}
+                      {faceStatus.state === 'disabled' && 'Turned off'}
+                    </span>
+                  </div>
+
+                  <div className="settings-bar">
+                    <div style={{ width: `${percent}%` }} />
+                  </div>
+
+                  <p className="settings-hint" style={{ marginBottom: 0 }}>
+                    {faceStatus.scanned.toLocaleString()} of {faceStatus.total.toLocaleString()}{' '}
+                    photos scanned · {faceStatus.faces.toLocaleString()} faces in{' '}
+                    {faceStatus.people.toLocaleString()} people
+                  </p>
+
+                  {faceStatus.message && (
+                    <p
+                      className={`settings-index-message${faceStatus.state === 'error' ? ' is-error' : ''}`}
+                    >
+                      {faceStatus.message}
+                    </p>
+                  )}
+
+                  <div className="settings-actions" style={{ marginTop: 'var(--space-4)' }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => rescanFaces.mutate(false)}
+                    >
+                      Scan new photos
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => rescanFaces.mutate(true)}
+                    >
+                      Rescan everything
+                    </button>
+                  </div>
+                </>
+              );
+            })()
+          ) : (
+            <p className="settings-hint" style={{ marginBottom: 0 }}>
+              Face grouping is turned off. Set <code>ENABLE_FACES=true</code> on the server to
+              group photos by who is in them — it downloads about 190 MB of models and adds some
+              CPU work per photo.
+            </p>
+          )
         ) : (
           <p className="settings-hint">Checking…</p>
         )}

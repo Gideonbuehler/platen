@@ -18,6 +18,8 @@ import {
   readVideoMetadata,
 } from '../services/media.js';
 import { embedImage, getMlStatus, toVectorLiteral } from '../services/ml.js';
+import { detectFaces, getFaceStatus, writeFaceCrop } from '../services/faces.js';
+import { assignFaceToPerson, pruneEmptyPeople, refreshCoverFaces } from '../services/clustering.js';
 import { enqueue } from './queue.js';
 
 interface AssetRow {
@@ -163,6 +165,9 @@ async function handleThumbnail(assetId: string): Promise<void> {
   if (config.ENABLE_ML) {
     await enqueue('embedding', { assetId }, `embedding:${assetId}`);
   }
+  if (config.ENABLE_FACES) {
+    await enqueue('face-detect', { assetId }, `face-detect:${assetId}`);
+  }
 }
 
 /**
@@ -228,6 +233,99 @@ async function handleTrashPurge(): Promise<void> {
   // where ON CONFLICT DO NOTHING caps it at a single outstanding job.
 }
 
+
+/**
+ * Finds faces in an asset and groups them with people already known.
+ *
+ * Runs against the preview: the detector resizes to 640px regardless, so
+ * decoding a 60 MP original for it would be wasted work. Coordinates are
+ * stored normalised 0..1 against the preview, which keeps them valid if the
+ * derivatives are ever regenerated at a different size.
+ */
+async function handleFaceDetect(assetId: string): Promise<void> {
+  if (!config.ENABLE_FACES) return;
+
+  // Same reasoning as embeddings: a first-run model download takes minutes and
+  // must not pin worker slots that thumbnails need.
+  const status = getFaceStatus();
+  if (status.state === 'loading') {
+    throw new Error('Face models are still loading; detection will retry shortly.');
+  }
+
+  const asset = await loadAsset(assetId);
+  if (!asset) return;
+
+  // Videos would need frame sampling to be worth scanning; stills only for now.
+  if (asset.type !== 'image') {
+    await sql`UPDATE assets SET faces_scanned_at = now() WHERE id = ${assetId}`;
+    return;
+  }
+
+  const faceDir = thumbDir(asset.owner_id, asset.id);
+  const previewPath = join(thumbsPath(faceDir), 'preview.webp');
+  if (!(await fileExists(previewPath))) {
+    throw new Error('Preview not generated yet; face detection will retry.');
+  }
+
+  const detected = await detectFaces(previewPath);
+
+  // Replace rather than append, so a re-scan cannot double-count faces. Doing
+  // it inside the same transaction as the insert means a crash mid-scan leaves
+  // the previous results intact instead of an empty set.
+  const previous = await sql<{ id: string; person_id: string | null }[]>`
+    SELECT id, person_id FROM faces WHERE asset_id = ${assetId}
+  `;
+  if (previous.length > 0) {
+    await sql`DELETE FROM faces WHERE asset_id = ${assetId}`;
+  }
+
+  const meta = await sharpMetadata(previewPath);
+
+  for (const face of detected) {
+    const relativeThumb = `${faceDir}/faces/${assetId}-${Math.round(face.x)}-${Math.round(face.y)}.webp`;
+
+    const [row] = await sql<{ id: string }[]>`
+      INSERT INTO faces (
+        asset_id, bbox_x, bbox_y, bbox_w, bbox_h, score, landmarks, embedding, thumb_path
+      ) VALUES (
+        ${assetId},
+        ${face.x / meta.width},
+        ${face.y / meta.height},
+        ${face.width / meta.width},
+        ${face.height / meta.height},
+        ${face.score},
+        ${sql.json(face.landmarks as unknown as Record<string, never>)},
+        ${toVectorLiteral(face.embedding)},
+        ${relativeThumb}
+      )
+      RETURNING id
+    `;
+    if (!row) continue;
+
+    try {
+      await writeFaceCrop(previewPath, face, thumbsPath(relativeThumb));
+    } catch {
+      // A crop failure costs an avatar, not the grouping itself.
+      await sql`UPDATE faces SET thumb_path = NULL WHERE id = ${row.id}`;
+    }
+
+    await assignFaceToPerson(row.id, asset.owner_id, toVectorLiteral(face.embedding));
+  }
+
+  await sql`UPDATE assets SET faces_scanned_at = now() WHERE id = ${assetId}`;
+
+  await pruneEmptyPeople(asset.owner_id);
+  await refreshCoverFaces(asset.owner_id);
+}
+
+/** Preview dimensions, used to normalise face boxes. */
+async function sharpMetadata(path: string): Promise<{ width: number; height: number }> {
+  const sharp = (await import('sharp')).default;
+  const meta = await sharp(path).metadata();
+  if (!meta.width || !meta.height) throw new Error(`Could not read dimensions of ${path}`);
+  return { width: meta.width, height: meta.height };
+}
+
 export async function runJob(type: JobType, payload: Record<string, unknown>): Promise<void> {
   const assetId = typeof payload.assetId === 'string' ? payload.assetId : null;
 
@@ -245,9 +343,8 @@ export async function runJob(type: JobType, payload: Record<string, unknown>): P
     case 'trash-purge':
       return handleTrashPurge();
     case 'face-detect':
-      // Reserved: face detection lands in a later milestone. Consuming the job
-      // as a no-op keeps queued rows from failing loudly in the meantime.
-      return;
+      if (!assetId) throw new Error('face-detect job requires assetId');
+      return handleFaceDetect(assetId);
     default:
       throw new Error(`Unknown job type: ${type}`);
   }

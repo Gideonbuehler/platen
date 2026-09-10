@@ -35,6 +35,8 @@ aperture/
   public link with an optional password and expiry.
 - **Natural-language search** — CLIP embeddings in pgvector, so "beach at
   sunset" finds the photo without you ever having tagged it. Optional.
+- **People** — faces are detected, grouped, and named. Off by default; turn on
+  with `ENABLE_FACES=true`. Optional.
 - **Multi-user** — each person's library is private to them; an admin manages
   accounts and quotas.
 - **Trash** — deletes are recoverable for 30 days before the bytes are removed.
@@ -136,6 +138,10 @@ same way — with a foreground sync.
 | `ALLOW_REGISTRATION` | `false` | Let anyone who can reach the server create an account. |
 | `ENABLE_ML` | `true` | Natural-language search. Off skips a ~250 MB model download and its CPU cost. |
 | `ML_MODEL` | `Xenova/clip-vit-base-patch32` | Must be a 512-dim CLIP model to match the database column. |
+| `ENABLE_FACES` | `false` | Face detection and people grouping. Adds ~190 MB of models and real CPU per photo. |
+| `FACE_MIN_SCORE` | `0.7` | Detector confidence floor. Below ~0.7 you start collecting things that merely look like faces. |
+| `FACE_MATCH_THRESHOLD` | `0.38` | Similarity above which two faces are the same person. Higher = stricter. |
+| `FACE_MIN_CLUSTER_SIZE` | `2` | Faces a person needs before appearing. Stops one-off strangers becoming people. |
 | `JOB_CONCURRENCY` | `3` | Thumbnails/embeddings processed at once. Roughly one per core you'll spare. |
 | `TRASH_RETENTION_DAYS` | `30` | How long deleted photos stay recoverable. |
 | `MAX_UPLOAD_BYTES` | 8 GiB | Ceiling on a single file. |
@@ -182,6 +188,29 @@ When a photo does record a UTC offset, that's stored too and used for display.
 
 Without this, an evening photo can slide into the next day's row depending on
 where the server happens to live.
+
+### People
+
+Two InsightFace models run through onnxruntime, which the CLIP stack already
+pulls in — so faces cost no extra container and no second runtime:
+
+- **SCRFD** (17 MB) finds faces and five landmarks per face.
+- **ArcFace** (174 MB) turns each face into a 512-d identity vector.
+
+Between them sits the step that actually decides whether this works: each face
+is warped onto a canonical 112×112 layout using those landmarks, so the
+recogniser sees every face presented the same way. Feeding it a plain crop
+instead is the usual reason home-grown face grouping produces groups that look
+arbitrary.
+
+Grouping is incremental rather than a periodic global re-cluster. Each new face
+joins the nearest person within the threshold, or starts a new one. That keeps
+names stable — a global re-cluster reshuffles membership, and a person you have
+named must not silently absorb someone else because you added a holiday album.
+The cost is order-dependence, which is what the merge tool in the UI is for.
+
+Note the models are published for non-commercial research use. Fine for a
+personal library; check the licence before shipping anything built on it.
 
 ### Background jobs
 

@@ -35,6 +35,39 @@ const schema = z.object({
     .transform((v) => v === 'true'),
   ML_MODEL: z.string().default('Xenova/clip-vit-base-patch32'),
 
+  /**
+   * Face detection and people grouping. Off by default: it is a further
+   * ~190 MB of models and materially more CPU per photo than search alone,
+   * and plenty of people want a backup target without any of it.
+   */
+  ENABLE_FACES: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
+
+  /**
+   * Detector confidence floor.
+   *
+   * 0.7 rather than the model's usual 0.5: on a real library the 0.5-0.7 band
+   * is where texture that merely resembles a face lives — a motorcycle wheel
+   * scored 0.61 during testing, while genuine faces sat above 0.9. In a photo
+   * app a false person is much more irritating than a missed one, since it
+   * shows up as a stranger you have to hunt down and hide.
+   */
+  FACE_MIN_SCORE: z.coerce.number().min(0.1).max(0.99).default(0.7),
+
+  /**
+   * Cosine similarity above which two faces are treated as the same person.
+   * Higher is stricter: fewer wrong merges, more duplicate people.
+   */
+  FACE_MATCH_THRESHOLD: z.coerce.number().min(0.1).max(0.95).default(0.38),
+
+  /** A person needs this many faces before appearing in the UI. */
+  FACE_MIN_CLUSTER_SIZE: z.coerce.number().int().min(1).default(2),
+
+  /** Faces smaller than this (pixels on the preview) are ignored as background. */
+  FACE_MIN_SIZE_PX: z.coerce.number().int().min(10).default(40),
+
   /** Days a trashed asset survives before the purge job deletes the bytes. */
   TRASH_RETENTION_DAYS: z.coerce.number().int().min(1).default(30),
 

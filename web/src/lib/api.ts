@@ -2,6 +2,9 @@ import type {
   Album,
   ApiError,
   Asset,
+  Face,
+  FaceStatus,
+  Person,
   AuthResponse,
   AuthTokens,
   CreateAlbumRequest,
@@ -231,6 +234,9 @@ export const assetOriginalUrl = (id: string, version?: string) =>
 export const assetDownloadUrl = (id: string, version?: string) =>
   `${mediaUrl(`/assets/${id}/original`, version)}&download=true`;
 
+/** Face crops never change once written, so they can be cached hard. */
+export const faceThumbnailUrl = (faceId: string) => mediaUrl(`/people/faces/${faceId}/thumbnail`);
+
 export const shareThumbnailUrl = (key: string, id: string) =>
   `/api/public/${key}/asset/${id}/thumbnail`;
 export const sharePreviewUrl = (key: string, id: string) =>
@@ -440,6 +446,24 @@ export const api = {
       `/public/${key}`,
       { anonymous: true, headers: password ? { 'X-Share-Password': password } : undefined },
     ),
+
+  // --- people ---
+  faceStatus: () => request<FaceStatus>('/people/status'),
+  people: () => request<Person[]>('/people'),
+  person: (id: string) => request<Person>(`/people/${id}`),
+  personAssets: (id: string) => request<Page<Asset>>(`/people/${id}/assets`),
+  updatePerson: (id: string, body: { name?: string | null; isHidden?: boolean; coverFaceId?: string }) =>
+    request<Person>(`/people/${id}`, { method: 'PATCH', body }),
+  mergePeople: (id: string, personIds: string[]) =>
+    request<{ merged: number; facesMoved: number }>(`/people/${id}/merge`, {
+      method: 'POST',
+      body: { personIds },
+    }),
+  detachFace: (faceId: string) =>
+    request<{ personId: string }>(`/people/faces/${faceId}/detach`, { method: 'POST' }),
+  facesForAsset: (assetId: string) => request<Face[]>(`/people/faces/by-asset/${assetId}`),
+  rescanFaces: (full = false) =>
+    request<{ queued: number }>('/people/rescan', { method: 'POST', body: { full } }),
 
   // --- search ---
   /**

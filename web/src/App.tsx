@@ -6,6 +6,8 @@ import { UploadsProvider } from './hooks/useUploads';
 import { AlbumDetailPage } from './pages/AlbumDetail';
 import { AlbumsPage } from './pages/Albums';
 import { LoginPage } from './pages/Login';
+import { PeoplePage } from './pages/People';
+import { PersonDetailPage } from './pages/PersonDetail';
 import { SearchPage } from './pages/Search';
 import { SettingsPage } from './pages/Settings';
 import { SharePage } from './pages/Share';
@@ -44,6 +46,8 @@ export function App() {
                   <Route path="/trash" element={<TimelinePage key="trash" variant="trash" />} />
                   <Route path="/albums" element={<AlbumsPage />} />
                   <Route path="/albums/:id" element={<AlbumDetailPage />} />
+                  <Route path="/people" element={<PeoplePage />} />
+                  <Route path="/people/:id" element={<PersonDetailPage />} />
                   <Route path="/search" element={<SearchPage />} />
                   <Route path="/settings" element={<SettingsPage />} />
                   <Route path="*" element={<Navigate to="/" replace />} />

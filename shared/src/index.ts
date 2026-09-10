@@ -228,8 +228,38 @@ export interface SearchHit {
 export interface Person {
   id: string;
   name: string | null;
-  coverAssetId: string | null;
+  /** Face whose crop is used as the avatar; null until one is generated. */
+  coverFaceId: string | null;
   faceCount: number;
+  /** Distinct photos this person appears in. */
+  assetCount: number;
+  isHidden: boolean;
+  createdAt: IsoDate;
+}
+
+/** A detected face, positioned relative to the asset's preview (0..1). */
+export interface Face {
+  id: string;
+  assetId: string;
+  personId: string | null;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  score: number;
+  isConfirmed: boolean;
+}
+
+export interface FaceStatus {
+  enabled: boolean;
+  state: 'disabled' | 'loading' | 'ready' | 'error';
+  message: string;
+  /** Photos scanned for faces, out of those eligible. */
+  scanned: number;
+  total: number;
+  pending: number;
+  people: number;
+  faces: number;
 }
 
 // ---------------------------------------------------------------------------
