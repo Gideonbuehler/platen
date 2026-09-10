@@ -12,13 +12,13 @@ import {
   View,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api, getAccessToken, getServerUrl } from '../../src/lib/api';
 import { getViewerAssets, indexOfAsset } from '../../src/lib/viewer';
+import { Scrim } from '../../src/components/Scrim';
 import { useSession } from '../../src/lib/session';
 import { fontSize, radius, spacing } from '../../src/lib/theme';
 import type { Asset } from '../../src/types';
@@ -298,10 +298,7 @@ export default function PhotoScreen() {
       >
         {/* A gradient rather than a flat bar: icons stay legible over a bright
             photo without stamping a solid slab across the top of it. */}
-        <LinearGradient
-          colors={['rgba(0,0,0,0.65)', 'transparent']}
-          style={StyleSheet.absoluteFill}
-        />
+        <Scrim from="top" opacity={0.65} />
         <Pressable onPress={() => router.back()} hitSlop={12} style={styles.iconButton}>
           <Ionicons name="chevron-back" size={26} color="#fff" />
         </Pressable>
@@ -318,10 +315,7 @@ export default function PhotoScreen() {
         style={[styles.bottomBar, { opacity: chrome, paddingBottom: insets.bottom + spacing.md }]}
         pointerEvents={chromeVisible ? 'auto' : 'none'}
       >
-        <LinearGradient
-          colors={['transparent', 'rgba(0,0,0,0.7)']}
-          style={StyleSheet.absoluteFill}
-        />
+        <Scrim from="bottom" opacity={0.7} />
 
         <Action
           icon={asset.isFavorite ? 'heart' : 'heart-outline'}
