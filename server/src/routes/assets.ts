@@ -34,9 +34,28 @@ function classify(mimeType: string, filename: string): { type: 'image' | 'video'
 
   const ext = filename.toLowerCase().split('.').pop() ?? '';
   const videoExts = ['mp4', 'mov', 'm4v', 'avi', 'mkv', 'webm', '3gp', 'mts', 'hevc'];
-  const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif', 'tif', 'tiff', 'bmp', 'avif', 'dng', 'cr2', 'cr3', 'nef', 'arw', 'raf', 'orf', 'rw2'];
+  const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif', 'tif', 'tiff', 'bmp', 'avif'];
+
+  // RAW needs real registered types. Naively building `image/<ext>` produced
+  // nonsense like "image/arw", which browsers refuse to render and which makes
+  // a downloaded original open in the wrong application.
+  const rawMimes: Record<string, string> = {
+    arw: 'image/x-sony-arw',
+    cr2: 'image/x-canon-cr2',
+    cr3: 'image/x-canon-cr3',
+    nef: 'image/x-nikon-nef',
+    nrw: 'image/x-nikon-nrw',
+    dng: 'image/x-adobe-dng',
+    raf: 'image/x-fuji-raf',
+    orf: 'image/x-olympus-orf',
+    rw2: 'image/x-panasonic-rw2',
+    pef: 'image/x-pentax-pef',
+    srw: 'image/x-samsung-srw',
+  };
 
   if (videoExts.includes(ext)) return { type: 'video', mime: `video/${ext === 'mov' ? 'quicktime' : ext}` };
+  const rawMime = rawMimes[ext];
+  if (rawMime) return { type: 'image', mime: rawMime };
   if (imageExts.includes(ext)) return { type: 'image', mime: `image/${ext === 'jpg' ? 'jpeg' : ext}` };
 
   throw badRequest(`Unsupported file type: ${filename}`);

@@ -311,7 +311,28 @@ export const api = {
   checkUploads: (checksums: string[]) =>
     request<UploadCheckResponse>('/assets/check', { method: 'POST', body: { checksums } }),
 
-  uploadFile: (file: File, onProgress?: (fraction: number) => void): Promise<UploadResult> => {
+  uploadFile: async (file: File, onProgress?: (fraction: number) => void): Promise<UploadResult> => {
+    // Prove the bytes are actually readable before opening a connection.
+    //
+    // A file can be listed but unreadable: a OneDrive/iCloud placeholder that
+    // was never downloaded, something on an unmounted network share, or a file
+    // moved between being picked and being sent. XHR reports all of those as a
+    // generic network error, which sends people hunting for a server problem
+    // that does not exist. One byte is enough to tell.
+    try {
+      await file.slice(0, 1).arrayBuffer();
+    } catch {
+      throw new ApiRequestError(
+        0,
+        'file_unreadable',
+        `"${file.name}" could not be read from this computer. If it lives in a cloud-synced folder, make it available offline first.`,
+      );
+    }
+
+    if (file.size === 0) {
+      throw new ApiRequestError(0, 'file_empty', `"${file.name}" is empty and was skipped.`);
+    }
+
     // XHR rather than fetch: fetch still cannot report upload progress, and a
     // progress bar matters a lot when someone drops 500 photos into the page.
     return new Promise((resolve, reject) => {
@@ -344,7 +365,13 @@ export const api = {
       });
 
       xhr.addEventListener('error', () =>
-        reject(new ApiRequestError(0, 'network_error', 'The connection dropped during upload.')),
+        reject(
+          new ApiRequestError(
+            0,
+            'network_error',
+            `Lost the connection while uploading "${file.name}". The server may have restarted, or the file became unreadable mid-transfer.`,
+          ),
+        ),
       );
       xhr.addEventListener('abort', () =>
         reject(new ApiRequestError(0, 'aborted', 'Upload cancelled.')),

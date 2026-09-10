@@ -3,6 +3,7 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useTheme } from '../hooks/useTheme';
 import { useUploads } from '../hooks/useUploads';
+import { captureEntries, expandDroppedEntries } from '../lib/dropped-files';
 import {
   IconAlbums,
   IconArchive,
@@ -69,9 +70,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     const onDrop = (event: DragEvent) => {
       depth = 0;
       setDragging(false);
-      if (!event.dataTransfer?.files.length) return;
+      if (!event.dataTransfer) return;
       event.preventDefault();
-      addFiles(Array.from(event.dataTransfer.files));
+
+      // Capture the entries synchronously — the DataTransfer is emptied the
+      // moment this handler returns, so this cannot wait for the walk.
+      const entries = captureEntries(event.dataTransfer);
+      const fallback = Array.from(event.dataTransfer.files);
+
+      void expandDroppedEntries(entries).then((files) => {
+        // Older browsers without the Entries API still get plain file drops.
+        addFiles(files.length > 0 ? files : fallback);
+      });
     };
 
     window.addEventListener('dragenter', onDragEnter);

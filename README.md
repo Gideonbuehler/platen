@@ -27,6 +27,10 @@ aperture/
   keeps its aspect ratio. Panoramas stay panoramas.
 - **Videos** — stored, thumbnailed via ffmpeg, and streamed with byte-range
   requests so seeking works.
+- **Camera RAW** — .ARW, .CR2/.CR3, .NEF, .DNG and friends are stored untouched.
+  libvips cannot decode RAW, so previews come from the full-size JPEG the camera
+  embeds, extracted with exiftool. You get a real thumbnail and the untouched
+  original.
 - **Albums and sharing** — share with another account on your server, or mint a
   public link with an optional password and expiry.
 - **Natural-language search** — CLIP embeddings in pgvector, so "beach at

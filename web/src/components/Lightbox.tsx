@@ -56,6 +56,7 @@ export function Lightbox({
 }: LightboxProps) {
   const [showInfo, setShowInfo] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [failed, setFailed] = useState(false);
   const imageRef = useRef<HTMLImageElement>(null);
 
   const asset = assets[index];
@@ -68,10 +69,16 @@ export function Lightbox({
     if (image?.complete && image.naturalWidth > 0) setLoaded(true);
   }, [index]);
 
+  // An asset whose derivatives never generated has no preview to fetch. Showing
+  // that up front beats a spinner that never resolves, which is what a missing
+  // preview looked like before.
+  const derivativesMissing = asset?.thumbStatus === 'failed' || asset?.thumbStatus === 'pending';
+
   const goTo = useCallback(
     (next: number) => {
       if (next < 0 || next >= assets.length) return;
       setLoaded(false);
+      setFailed(false);
       onIndexChange(next);
     },
     [assets.length, onIndexChange],
@@ -224,20 +231,43 @@ export function Lightbox({
             />
           ) : (
             <>
-              {!loaded && (
+              {!loaded && !failed && !derivativesMissing && (
                 <div className="lightbox-loading">
                   <IconSpinner size={30} />
                 </div>
               )}
-              <img
-                key={asset.id}
-                ref={imageRef}
-                src={previewUrl(asset)}
-                alt={asset.originalFilename}
-                className={loaded ? 'is-loaded' : ''}
-                onLoad={() => setLoaded(true)}
-                draggable={false}
-              />
+
+              {failed || derivativesMissing ? (
+                <div className="lightbox-unavailable">
+                  <h3>
+                    {asset.thumbStatus === 'pending'
+                      ? 'Still processing'
+                      : 'No preview available'}
+                  </h3>
+                  <p>
+                    {asset.thumbStatus === 'pending'
+                      ? 'This photo is still being processed. It will appear shortly.'
+                      : 'A preview could not be generated for this file, but the original is stored safely and can still be downloaded.'}
+                  </p>
+                  {allowDownload && (
+                    <a className="btn btn-secondary" href={downloadUrl(asset)} download={asset.originalFilename}>
+                      <IconDownload size={17} />
+                      Download original
+                    </a>
+                  )}
+                </div>
+              ) : (
+                <img
+                  key={asset.id}
+                  ref={imageRef}
+                  src={previewUrl(asset)}
+                  alt={asset.originalFilename}
+                  className={loaded ? 'is-loaded' : ''}
+                  onLoad={() => setLoaded(true)}
+                  onError={() => setFailed(true)}
+                  draggable={false}
+                />
+              )}
             </>
           )}
         </div>

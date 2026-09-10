@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
+import { createWriteStream } from 'node:fs';
 import { mkdir, rm, stat } from 'node:fs/promises';
-import { join } from 'node:path';
+import { extname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import exifr from 'exifr';
@@ -154,6 +155,19 @@ export async function readImageMetadata(path: string): Promise<MediaMetadata> {
       result.takenAtOffset = str(tags.OffsetTimeOriginal ?? tags.OffsetTime);
       const taken = tags.DateTimeOriginal ?? tags.CreateDate ?? tags.ModifyDate;
       result.takenAt = exifDateToUtc(taken, result.takenAtOffset);
+
+      // sharp could not open the file (RAW), so fall back to the dimensions the
+      // camera recorded. Without these the grid has no aspect ratio to lay the
+      // tile out with and every RAW would be boxed at a default 3:2.
+      if (result.width === null || result.height === null) {
+        const exifWidth = num(tags.ImageWidth ?? tags.ExifImageWidth ?? tags.PixelXDimension);
+        const exifHeight = num(tags.ImageHeight ?? tags.ExifImageHeight ?? tags.PixelYDimension);
+        if (exifWidth && exifHeight) {
+          const swap = result.orientation >= 5;
+          result.width = swap ? exifHeight : exifWidth;
+          result.height = swap ? exifWidth : exifHeight;
+        }
+      }
     }
   } catch {
     // Files with no EXIF at all (screenshots, PNGs) land here. Not an error.
@@ -193,6 +207,91 @@ function run(cmd: string, args: string[], timeoutMs = 120_000): Promise<string> 
       else reject(new Error(`${cmd} exited ${code}: ${stderr.slice(-500)}`));
     });
   });
+}
+
+/**
+ * Runs a command and streams its stdout straight to a file.
+ *
+ * `run()` accumulates stdout into a string, which silently corrupts binary
+ * payloads — exactly what we are extracting here. Returns the number of bytes
+ * written so the caller can reject an empty result.
+ */
+function runToFile(cmd: string, args: string[], outPath: string, timeoutMs = 60_000): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(cmd, args, { windowsHide: true });
+    const out = createWriteStream(outPath);
+    let stderr = '';
+    let written = 0;
+
+    const timer = setTimeout(() => {
+      child.kill('SIGKILL');
+      reject(new Error(`${cmd} timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    child.stdout.on('data', (chunk: Buffer) => {
+      written += chunk.length;
+    });
+    child.stdout.pipe(out);
+    child.stderr.on('data', (d) => (stderr += d));
+
+    child.on('error', (err) => {
+      clearTimeout(timer);
+      out.destroy();
+      reject(new Error(`${cmd} could not be started: ${err.message}`));
+    });
+
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      out.end(() => {
+        if (code === 0) resolve(written);
+        else reject(new Error(`${cmd} exited ${code}: ${stderr.slice(-300)}`));
+      });
+    });
+  });
+}
+
+/**
+ * Camera RAW formats. libvips cannot decode any of these, so anything in this
+ * list goes down the embedded-preview path rather than straight to sharp.
+ */
+const RAW_EXTENSIONS = new Set([
+  '.arw', '.cr2', '.cr3', '.nef', '.nrw', '.dng', '.raf', '.orf', '.rw2',
+  '.pef', '.srw', '.3fr', '.erf', '.kdc', '.mrw', '.x3f', '.raw', '.rwl',
+]);
+
+export const isRawExtension = (filename: string): boolean =>
+  RAW_EXTENSIONS.has(extname(filename).toLowerCase());
+
+/**
+ * Pulls the JPEG that virtually every RAW file carries inside it.
+ *
+ * Cameras embed a full-size (or near-full-size) JPEG so their own screens can
+ * display the shot, and that is far and away the cheapest correct way to build
+ * a thumbnail: it is already demosaiced and has the manufacturer's colour
+ * rendering applied, which a generic decoder would not reproduce anyway.
+ *
+ * Tags are tried largest-first. Sony and Canon use JpgFromRaw, most others use
+ * PreviewImage, and ThumbnailImage is the small last resort.
+ */
+export async function extractEmbeddedPreview(sourcePath: string): Promise<string | null> {
+  const tags = ['-JpgFromRaw', '-PreviewImage', '-OtherImage', '-ThumbnailImage'];
+
+  for (const tag of tags) {
+    const outPath = join(tmpdir(), `${randomUUID()}.jpg`);
+    try {
+      const bytes = await runToFile('exiftool', ['-b', tag, sourcePath], outPath);
+
+      // exiftool exits 0 with no output when the tag is absent, so size is the
+      // real test. Anything under 1 KB is not a usable preview.
+      if (bytes > 1024) return outPath;
+      await rm(outPath, { force: true });
+    } catch {
+      await rm(outPath, { force: true });
+      // exiftool missing entirely, or this tag failed — try the next one.
+    }
+  }
+
+  return null;
 }
 
 export async function readVideoMetadata(path: string): Promise<MediaMetadata> {
@@ -279,19 +378,55 @@ export async function generateImageDerivatives(
   const thumbPath = join(outputDir, 'thumb.webp');
   const previewPath = join(outputDir, 'preview.webp');
 
-  const input = () => sharp(sourcePath, { failOn: 'none', limitInputPixels: 1_000_000_000 }).rotate();
+  // libvips cannot decode camera RAW, so those are rendered from the JPEG the
+  // camera embedded. Anything else goes straight to sharp; if sharp turns out
+  // not to understand it either, we still try the embedded preview before
+  // giving up, since plenty of odd formats carry one.
+  let decodeFrom = sourcePath;
+  let extracted: string | null = null;
 
-  await input()
-    .resize(THUMB_SIZE, THUMB_SIZE, { fit: 'inside', withoutEnlargement: true })
-    .webp({ quality: 80, effort: 4 })
-    .toFile(thumbPath);
+  if (isRawExtension(sourcePath)) {
+    extracted = await extractEmbeddedPreview(sourcePath);
+    if (!extracted) {
+      throw new Error(
+        `${extname(sourcePath)} is a RAW format with no embedded preview this server could read. ` +
+          'The original is stored safely, but no thumbnail can be generated.',
+      );
+    }
+    decodeFrom = extracted;
+  }
 
-  await input()
-    .resize(PREVIEW_SIZE, PREVIEW_SIZE, { fit: 'inside', withoutEnlargement: true })
-    .webp({ quality: 82, effort: 4 })
-    .toFile(previewPath);
+  try {
+    const render = async (from: string): Promise<void> => {
+      const input = () => sharp(from, { failOn: 'none', limitInputPixels: 1_000_000_000 }).rotate();
 
-  return { thumbPath, previewPath };
+      await input()
+        .resize(THUMB_SIZE, THUMB_SIZE, { fit: 'inside', withoutEnlargement: true })
+        .webp({ quality: 80, effort: 4 })
+        .toFile(thumbPath);
+
+      await input()
+        .resize(PREVIEW_SIZE, PREVIEW_SIZE, { fit: 'inside', withoutEnlargement: true })
+        .webp({ quality: 82, effort: 4 })
+        .toFile(previewPath);
+    };
+
+    try {
+      await render(decodeFrom);
+    } catch (err) {
+      if (extracted) throw err; // already the fallback path; nothing left to try
+
+      const rescue = await extractEmbeddedPreview(sourcePath);
+      if (!rescue) throw err;
+
+      extracted = rescue;
+      await render(rescue);
+    }
+
+    return { thumbPath, previewPath };
+  } finally {
+    if (extracted) await rm(extracted, { force: true });
+  }
 }
 
 /**

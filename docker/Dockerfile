@@ -41,11 +41,15 @@ FROM node:22-bookworm-slim AS runtime
 
 # ffmpeg for video thumbnails and duration probing.
 # libvips is sharp's image backend.
+# exiftool extracts the JPEG that camera RAW files embed — libvips cannot decode
+# RAW at all, so without this every .ARW/.CR3/.NEF uploads fine and then fails
+# to produce a thumbnail.
 # tini reaps zombies and forwards SIGTERM so graceful shutdown actually works
 # when Unraid stops the container.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ffmpeg \
       libvips42 \
+      libimage-exiftool-perl \
       tini \
       ca-certificates \
     && rm -rf /var/lib/apt/lists/*
