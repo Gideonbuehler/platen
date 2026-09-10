@@ -107,11 +107,40 @@ npx expo prebuild          # generates the native projects
 npx expo run:android       # or: npx expo run:ios
 ```
 
-For a device build you can install without a cable, use EAS:
+### Building the app yourself
+
+There are two routes, and the cloud one is far less work.
+
+**Cloud (no Android SDK needed).** Builds on Expo's servers and hands back an
+installable APK:
 
 ```bash
 npx eas build --profile preview --platform android
 ```
+
+**Locally.** `npx expo run:android` needs a full Android toolchain. Android
+Studio alone is not enough — an older SDK will fail with
+`SDK location not found` or a missing platform. You need:
+
+| | Version | Why |
+| --- | --- | --- |
+| JDK | 17 or 21 | React Native 0.76 |
+| SDK Platform | **android-35** | `compileSdkVersion` |
+| Build-Tools | **35.0.0** | |
+| NDK | **26.1.10909125** | New Architecture compiles C++ |
+
+Install them from Android Studio's **SDK Manager** (tick *Show Package
+Details* to pick exact versions). Then point Gradle at the SDK by creating
+`mobile/android/local.properties`:
+
+```
+sdk.dir=C:/Users/you/AppData/Local/Android/Sdk
+```
+
+Use forward slashes. Java `.properties` treats a backslash as an escape
+character, so a Windows path written with single backslashes silently becomes
+nonsense. The file is machine-specific and gitignored, along with the whole
+generated `android/` directory.
 
 **In the app:** enter your server address (`tower.local:2283` — the scheme is
 optional), sign in, then open **Library → Backup** and turn it on.
