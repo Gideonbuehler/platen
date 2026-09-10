@@ -80,6 +80,28 @@ const schema = z.object({
   /** How often an enabled external library is re-scanned, in minutes. */
   EXTERNAL_SCAN_INTERVAL_MINUTES: z.coerce.number().int().min(5).default(360),
 
+  /**
+   * Optional Redis cache for thumbnails.
+   *
+   * Empty means no Redis at all and everything is served from disk, which is
+   * the default two-container setup. Redis here is strictly a cache: it holds
+   * only regenerable derivatives, never originals and never the database, so
+   * losing it costs a little speed and nothing else.
+   */
+  REDIS_URL: z.string().default(''),
+
+  /** How long a cached thumbnail lives. LRU eviction handles memory pressure. */
+  REDIS_TTL_SECONDS: z.coerce.number().int().min(60).default(7 * 24 * 3600),
+
+  /**
+   * Values above this are served straight from disk instead.
+   *
+   * Redis is single-threaded: a multi-megabyte value blocks every other client
+   * while it is serialised. Thumbnails are tens of kilobytes, previews can be
+   * hundreds, and originals are the wrong thing to put in RAM entirely.
+   */
+  REDIS_MAX_VALUE_BYTES: z.coerce.number().int().positive().default(512 * 1024),
+
   /** Days a trashed asset survives before the purge job deletes the bytes. */
   TRASH_RETENTION_DAYS: z.coerce.number().int().min(1).default(30),
 

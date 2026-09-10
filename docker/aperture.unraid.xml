@@ -88,6 +88,10 @@
           Mode="" Description="How long deleted photos stay recoverable in the trash before the files are removed."
           Type="Variable" Display="advanced" Required="false" Mask="false">30</Config>
 
+  <Config Name="REDIS_URL" Target="REDIS_URL" Default=""
+          Mode="" Description="Optional thumbnail cache, e.g. redis://aperture-redis:6379. Caches only regenerable thumbnails, never your originals or the database. Leave blank to serve everything from disk."
+          Type="Variable" Display="advanced" Required="false" Mask="false"/>
+
   <Config Name="TZ" Target="TZ" Default="UTC"
           Mode="" Description="Container timezone. Capture times come from each photo's own EXIF, so this only affects log timestamps."
           Type="Variable" Display="advanced" Required="false" Mask="false">UTC</Config>

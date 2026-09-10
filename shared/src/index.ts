@@ -296,7 +296,20 @@ export interface JobStats {
   failed: number;
 }
 
+export interface CacheStatus {
+  /** False when REDIS_URL is unset — the default, disk-only setup. */
+  configured: boolean;
+  healthy: boolean;
+  lastError: string;
+  hits: number;
+  misses: number;
+  errors: number;
+  /** 0..1 across this server process's lifetime. */
+  hitRate: number;
+}
+
 export interface ServerStats {
+  cache: CacheStatus;
   users: number;
   assets: number;
   photos: number;

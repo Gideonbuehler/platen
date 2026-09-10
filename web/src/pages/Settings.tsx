@@ -419,6 +419,61 @@ export function SettingsPage() {
         )}
       </section>
 
+      {/* ---- Thumbnail cache ------------------------------------------------ */}
+      {user?.isAdmin && stats && (
+        <section className="settings-section card">
+          <h2>Thumbnail cache</h2>
+
+          {!stats.cache.configured ? (
+            <p className="settings-hint" style={{ marginBottom: 0 }}>
+              Not configured. Thumbnails are read from disk, which is fine on SSD storage. If your
+              photos live on a spinning array, adding Redis keeps the grid smooth while scrolling —
+              set <code>REDIS_URL</code> and start the <code>aperture-redis</code> container.
+            </p>
+          ) : (
+            <>
+              <div className="settings-index-head">
+                <span
+                  className={`settings-dot is-${stats.cache.healthy ? 'ready' : 'error'}`}
+                  aria-hidden="true"
+                />
+                <span className="settings-index-state">
+                  {stats.cache.healthy ? 'Connected' : 'Unreachable — serving from disk'}
+                </span>
+              </div>
+
+              {stats.cache.healthy && (
+                <>
+                  <div className="settings-cache-bar">
+                    <div style={{ width: `${Math.round(stats.cache.hitRate * 100)}%` }} />
+                  </div>
+                  <p className="settings-hint" style={{ marginBottom: 0 }}>
+                    {Math.round(stats.cache.hitRate * 100)}% of thumbnail requests served from
+                    memory · {stats.cache.hits.toLocaleString()} hits,{' '}
+                    {stats.cache.misses.toLocaleString()} misses
+                    {stats.cache.errors > 0 && (
+                      <span className="settings-failed">
+                        {' · '}
+                        {stats.cache.errors.toLocaleString()} errors
+                      </span>
+                    )}
+                  </p>
+                </>
+              )}
+
+              {stats.cache.lastError && (
+                <p className="settings-index-message is-error">{stats.cache.lastError}</p>
+              )}
+
+              <p className="settings-hint" style={{ marginTop: 'var(--space-4)', marginBottom: 0 }}>
+                Only thumbnails and previews are cached. Your originals and the database are never
+                stored in Redis, so losing it costs a little speed and nothing else.
+              </p>
+            </>
+          )}
+        </section>
+      )}
+
       {/* ---- External libraries -------------------------------------------- */}
       {user?.isAdmin && (
         <section className="settings-section card">

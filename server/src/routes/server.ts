@@ -8,6 +8,7 @@ import { badRequest, notFound } from '../lib/errors.js';
 import { auth, requireAdmin, requireAuth } from '../middleware/auth.js';
 import { hashPassword, revokeAllForUser, toUserDto, type UserRow } from '../services/auth.js';
 import { enqueue, retryFailed, stats as jobStats } from '../jobs/queue.js';
+import { getCacheStatus } from '../services/cache.js';
 
 const VERSION = '0.1.0';
 
@@ -67,6 +68,7 @@ export async function serverRoutes(app: FastifyInstance): Promise<void> {
     }
 
     return {
+      cache: getCacheStatus(),
       users: users?.count ?? 0,
       assets: totals?.assets ?? 0,
       photos: totals?.photos ?? 0,

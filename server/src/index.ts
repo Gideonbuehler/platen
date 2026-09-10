@@ -25,6 +25,7 @@ import { libraryRoutes } from './routes/libraries.js';
 import { hasFfmpeg } from './services/media.js';
 import { warmUp } from './services/ml.js';
 import { warmUpFaces } from './services/faces.js';
+import { closeCache, initCache } from './services/cache.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -177,6 +178,8 @@ async function start(): Promise<void> {
     );
   }
 
+  await initCache((msg) => app.log.info(msg));
+
   const stopWorker = startWorker(app.log);
   void warmUp((msg) => app.log.info(msg));
   void warmUpFaces((msg) => app.log.info(msg));
@@ -203,6 +206,7 @@ async function start(): Promise<void> {
     try {
       await app.close();
       await stopWorker();
+      await closeCache();
       await closeDatabase();
       app.log.info('Goodbye.');
       process.exit(0);

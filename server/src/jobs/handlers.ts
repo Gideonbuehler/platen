@@ -23,6 +23,7 @@ import { embedImage, getMlStatus, toVectorLiteral } from '../services/ml.js';
 import { detectFaces, getFaceStatus, writeFaceCrop } from '../services/faces.js';
 import { assignFaceToPerson, pruneEmptyPeople, refreshCoverFaces } from '../services/clustering.js';
 import { scanLibrary } from '../services/scanner.js';
+import { invalidateAsset } from '../services/cache.js';
 import { enqueue } from './queue.js';
 
 interface AssetRow {
@@ -182,6 +183,10 @@ async function handleThumbnail(assetId: string): Promise<void> {
         height = COALESCE(${derivatives.height}, height)
       WHERE id = ${assetId}
     `;
+
+    // The files behind these keys have just been rewritten; a cached copy of
+    // the previous render would otherwise outlive them.
+    await invalidateAsset(assetId);
   } catch (err) {
     // Mark failed so the UI can show a placeholder instead of a spinner
     // forever, then rethrow so the queue applies its retry policy.

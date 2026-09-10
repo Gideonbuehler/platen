@@ -1,5 +1,5 @@
 import { createReadStream } from 'node:fs';
-import { stat } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
@@ -20,6 +20,7 @@ import {
   thumbsPath,
 } from '../lib/storage.js';
 import { auth, requireAuth } from '../middleware/auth.js';
+import { getCached, previewKey, setCached, thumbKey } from '../services/cache.js';
 import { enqueue } from '../jobs/queue.js';
 
 // ---------------------------------------------------------------------------
@@ -418,20 +419,60 @@ export async function assetRoutes(app: FastifyInstance): Promise<void> {
     return toAssetDto(await loadOwnedAsset(id, userId));
   });
 
+  /**
+   * Serves a derivative, preferring the cache.
+   *
+   * Cache-aside rather than write-through: disk stays the source of truth and
+   * Redis only ever holds a copy, so a cold, evicted or missing cache is just
+   * a slower path rather than a missing image. Scrolling the grid fires
+   * hundreds of these, which is why it is worth caching at all.
+   */
+  const sendDerivative = async (
+    reply: FastifyReply,
+    row: AssetRow,
+    file: 'thumb.webp' | 'preview.webp',
+    key: string,
+  ): Promise<FastifyReply> => {
+    const cached = await getCached(key);
+    if (cached) {
+      reply.header('Content-Type', 'image/webp');
+      reply.header('Content-Length', cached.byteLength);
+      reply.header('Cache-Control', 'private, max-age=31536000, immutable');
+      reply.header('X-Cache', 'HIT');
+      return reply.send(cached);
+    }
+
+    const path = join(thumbsPath(thumbDir(row.owner_id, row.id)), file);
+
+    // Read once and serve from memory, so populating the cache costs no extra
+    // disk read. Failures fall through to the streaming path, which also
+    // produces the correct 404 when the derivative does not exist yet.
+    try {
+      const bytes = await readFile(path);
+      void setCached(key, bytes);
+
+      reply.header('Content-Type', 'image/webp');
+      reply.header('Content-Length', bytes.byteLength);
+      reply.header('Cache-Control', 'private, max-age=31536000, immutable');
+      reply.header('X-Cache', 'MISS');
+      return reply.send(bytes);
+    } catch {
+      return sendFile(reply, path, 'image/webp', { immutable: true });
+    }
+  };
+
   app.get('/:id/thumbnail', async (request, reply) => {
     const { userId } = auth(request);
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
     const row = await loadOwnedAsset(id, userId);
-    const path = join(thumbsPath(thumbDir(row.owner_id, row.id)), 'thumb.webp');
-    return sendFile(reply, path, 'image/webp', { immutable: true });
+    return sendDerivative(reply, row, 'thumb.webp', thumbKey(row.id));
   });
 
   app.get('/:id/preview', async (request, reply) => {
     const { userId } = auth(request);
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
     const row = await loadOwnedAsset(id, userId);
-    const path = join(thumbsPath(thumbDir(row.owner_id, row.id)), 'preview.webp');
-    return sendFile(reply, path, 'image/webp', { immutable: true });
+    return sendDerivative(reply, row, 'preview.webp', previewKey(row.id));
   });
 
   app.get('/:id/original', async (request, reply) => {

@@ -40,6 +40,8 @@ aperture/
 - **Multi-user** — each person's library is private to them; an admin manages
   accounts and quotas.
 - **Trash** — deletes are recoverable for 30 days before the bytes are removed.
+- **Optional Redis cache** — keeps thumbnails in RAM. Measured ~5x faster to
+  serve, and 7x better at the 95th percentile, which is what smooths scrolling.
 
 ---
 
@@ -145,6 +147,10 @@ same way — with a foreground sync.
 | `JOB_CONCURRENCY` | `3` | Thumbnails/embeddings processed at once. Roughly one per core you'll spare. |
 | `TRASH_RETENTION_DAYS` | `30` | How long deleted photos stay recoverable. |
 | `MAX_UPLOAD_BYTES` | 8 GiB | Ceiling on a single file. |
+| `REDIS_URL` | _(empty)_ | Optional thumbnail cache. Empty means no Redis and everything is served from disk. |
+| `REDIS_MAX_MEMORY` | `512mb` | Hard ceiling on the Redis container. It evicts the coldest thumbnails rather than growing. |
+| `REDIS_TTL_SECONDS` | 7 days | How long a cached thumbnail lives. |
+| `EXTERNAL_ROOT` | `/data/external` | Every external library must live under this path. |
 
 ---
 
@@ -211,6 +217,39 @@ The cost is order-dependence, which is what the merge tool in the UI is for.
 
 Note the models are published for non-commercial research use. Fine for a
 personal library; check the licence before shipping anything built on it.
+
+### The Redis cache, and what it is not
+
+Redis is optional and holds **only thumbnails and previews** — never your
+originals, never the database. That distinction is the whole design:
+
+- Redis keeps everything in RAM, so storing originals there would mean buying
+  as much memory as you have photos.
+- It is a cache. It evicts under pressure and starts empty after a restart.
+  Anything that cannot be regenerated has no business in it.
+- Large values block its single event loop while being serialised, which is why
+  values above `REDIS_MAX_VALUE_BYTES` are served straight from disk instead.
+
+Everything cached is a copy of a file already on disk, so the cache being cold,
+evicted, full or entirely absent only ever costs a little speed. Persistence is
+switched off in the compose file for the same reason — writing out a copy of
+something already on disk is pure overhead.
+
+Measured locally over 330 requests, warm both ways:
+
+| | mean | p50 | p95 | max |
+| --- | --- | --- | --- | --- |
+| From disk | 7.2 ms | 6.0 ms | 15.6 ms | 23.7 ms |
+| From Redis | 1.5 ms | 1.4 ms | 2.1 ms | 4.2 ms |
+
+The p95 column is the one that matters: tail latency is what you feel as stutter
+when a grid fires a few hundred thumbnail requests at once. Expect a bigger gap
+on an Unraid array of spinning disks and a smaller one if your thumbnails
+already live on an SSD cache pool.
+
+If Redis goes away mid-request the server keeps serving from disk, reports
+itself degraded in **Settings**, and reconnects on its own — verified by
+killing the container under load.
 
 ### Background jobs
 

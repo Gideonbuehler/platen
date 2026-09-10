@@ -410,3 +410,22 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* --- thumbnail cache ------------------------------------------------------ */
+
+.settings-cache-bar {
+  height: 6px;
+  margin: var(--space-3) 0;
+  border-radius: var(--radius-full);
+  background: var(--surface-hover);
+  overflow: hidden;
+}
+
+.settings-cache-bar div {
+  height: 100%;
+  border-radius: var(--radius-full);
+  /* Green rather than the accent: a hit rate is a health reading, not an
+     action, and should not compete with the buttons around it. */
+  background: var(--success);
+  transition: width var(--duration-slow) var(--ease);
+}
