@@ -91,7 +91,7 @@ export function AlbumsPage() {
             <Link key={album.id} to={`/albums/${album.id}`} className="album-card">
               <div className="album-cover">
                 {album.coverAssetId ? (
-                  <img src={assetThumbnailUrl(album.coverAssetId)} alt="" loading="lazy" />
+                  <img src={assetThumbnailUrl(album.coverAssetId, album.updatedAt)} alt="" loading="lazy" />
                 ) : (
                   <div className="album-cover-empty">
                     <IconAlbums size={26} />

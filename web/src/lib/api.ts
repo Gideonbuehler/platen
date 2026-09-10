@@ -199,15 +199,37 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 // token as a query parameter. The server only honours it on GET media routes.
 // ---------------------------------------------------------------------------
 
-function mediaUrl(path: string): string {
+/**
+ * Derivative URLs carry a version stamp.
+ *
+ * The path `/assets/<id>/thumbnail` is stable, but its *content* is not:
+ * regenerating thumbnails rewrites the file behind the same URL. Combined with
+ * the year-long immutable cache the server sends, a browser that saw the old
+ * image would keep showing it essentially forever — which is exactly what
+ * happened when a rotation fix silently changed every derivative.
+ *
+ * Stamping the asset's `updatedAt` into the query string keeps the aggressive
+ * caching (worth a lot on a photo grid) while guaranteeing that regenerated
+ * derivatives are fetched fresh.
+ */
+function mediaUrl(path: string, version?: string): string {
   const token = getAccessToken();
-  return token ? `/api${path}?token=${encodeURIComponent(token)}` : `/api${path}`;
+  const params = new URLSearchParams();
+  if (token) params.set('token', token);
+  if (version) params.set('v', version);
+  const query = params.toString();
+  return query ? `/api${path}?${query}` : `/api${path}`;
 }
 
-export const assetThumbnailUrl = (id: string) => mediaUrl(`/assets/${id}/thumbnail`);
-export const assetPreviewUrl = (id: string) => mediaUrl(`/assets/${id}/preview`);
-export const assetOriginalUrl = (id: string) => mediaUrl(`/assets/${id}/original`);
-export const assetDownloadUrl = (id: string) => `${mediaUrl(`/assets/${id}/original`)}&download=true`;
+/** `version` should be the asset's updatedAt; omitting it risks a stale cache. */
+export const assetThumbnailUrl = (id: string, version?: string) =>
+  mediaUrl(`/assets/${id}/thumbnail`, version);
+export const assetPreviewUrl = (id: string, version?: string) =>
+  mediaUrl(`/assets/${id}/preview`, version);
+export const assetOriginalUrl = (id: string, version?: string) =>
+  mediaUrl(`/assets/${id}/original`, version);
+export const assetDownloadUrl = (id: string, version?: string) =>
+  `${mediaUrl(`/assets/${id}/original`, version)}&download=true`;
 
 export const shareThumbnailUrl = (key: string, id: string) =>
   `/api/public/${key}/asset/${id}/thumbnail`;

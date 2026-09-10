@@ -6,7 +6,7 @@ import { sql } from '../db/index.js';
 import { badRequest, HttpError } from '../lib/errors.js';
 import { assetColumnsWithExif, toAssetDto, type AssetRow } from '../lib/mappers.js';
 import { auth, requireAuth } from '../middleware/auth.js';
-import { embedText, getMlStatus, toVectorLiteral } from '../services/ml.js';
+import { embedText, getBaselineEmbedding, getMlStatus, toVectorLiteral } from '../services/ml.js';
 
 export async function searchRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', requireAuth);
@@ -23,7 +23,12 @@ export async function searchRoutes(app: FastifyInstance): Promise<void> {
     const body = z
       .object({
         query: z.string().min(1).max(300),
-        threshold: z.number().min(0).max(1).default(0.15),
+        /**
+         * Minimum margin over the generic baseline. Empirically a real match
+         * clears ~0.03 and an unrelated photo sits below ~0.01, so 0.02 is a
+         * reasonable default. Lower it to cast a wider net.
+         */
+        threshold: z.number().min(0).max(1).default(0.02),
         limit: z.number().int().min(1).max(200).default(80),
       })
       .parse(request.body);
@@ -42,8 +47,14 @@ export async function searchRoutes(app: FastifyInstance): Promise<void> {
     }
 
     let vector: string;
+    let baseline: string;
     try {
-      vector = toVectorLiteral(await embedText(body.query));
+      const [queryVec, baseVec] = await Promise.all([
+        embedText(body.query),
+        getBaselineEmbedding(),
+      ]);
+      vector = toVectorLiteral(queryVec);
+      baseline = toVectorLiteral(baseVec);
     } catch (err) {
       // A model that cannot load is not an unexpected server fault; say so
       // plainly rather than returning an opaque 500.
@@ -55,43 +66,32 @@ export async function searchRoutes(app: FastifyInstance): Promise<void> {
         }`,
       );
     }
-    const maxDistance = 1 - body.threshold;
-
-    const rows = await sql<(AssetRow & { distance: number })[]>`
-      SELECT ${sql.unsafe(assetColumnsWithExif())}, (em.embedding <=> ${vector}::vector) AS distance
+    // Rank on the query distance so the HNSW index does the work, and carry the
+    // baseline distance along for the margin test below.
+    const rows = await sql<(AssetRow & { distance: number; base_distance: number })[]>`
+      SELECT ${sql.unsafe(assetColumnsWithExif())},
+             (em.embedding <=> ${vector}::vector)   AS distance,
+             (em.embedding <=> ${baseline}::vector) AS base_distance
       FROM asset_embeddings em
       JOIN assets a ON a.id = em.asset_id
       LEFT JOIN asset_exif e ON e.asset_id = a.id
       WHERE a.owner_id = ${userId}
         AND a.deleted_at IS NULL
-        AND (em.embedding <=> ${vector}::vector) < ${maxDistance}
       ORDER BY em.embedding <=> ${vector}::vector
       LIMIT ${body.limit}
     `;
 
-    const hits = rows.map(
-      (row): SearchHit => ({ asset: toAssetDto(row), score: 1 - Number(row.distance) }),
-    );
-    if (hits.length === 0) return hits;
-
-    /**
-     * Cut relative to the best match, not on an absolute score.
-     *
-     * CLIP similarities live in a narrow band — an unrelated photo scores about
-     * 0.19 and a good match about 0.30 — so any fixed threshold either admits
-     * the whole library or rejects all of it, and the right value shifts with
-     * the phrasing of the query. Anchoring the cutoff to the top hit behaves
-     * consistently whether the library holds three photos or fifty thousand.
-     *
-     * When everything scores about the same, nothing is meaningfully more
-     * relevant than anything else, and the whole set is returned rather than an
-     * arbitrary slice of it.
-     */
-    const RELATIVE_WINDOW = 0.05;
-    const best = hits[0]!.score;
-    const floor = Math.max(body.threshold, best - RELATIVE_WINDOW);
-
-    return hits.filter((hit) => hit.score >= floor);
+    // margin = how much better the query fits this photo than a generic phrase.
+    // Cosine distance is 1 - similarity, so the two 1s cancel and the margin is
+    // simply the difference of the distances.
+    return rows
+      .map((row) => ({
+        asset: toAssetDto(row),
+        margin: Number(row.base_distance) - Number(row.distance),
+        score: 1 - Number(row.distance),
+      }))
+      .filter((hit) => hit.margin >= body.threshold)
+      .map(({ asset, score }): SearchHit => ({ asset, score }));
   });
 
   /**

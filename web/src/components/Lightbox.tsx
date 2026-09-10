@@ -48,9 +48,9 @@ export function Lightbox({
   onClose,
   onToggleFavorite,
   onDelete,
-  previewUrl = (asset) => assetPreviewUrl(asset.id),
-  originalUrl = (asset) => assetOriginalUrl(asset.id),
-  downloadUrl = (asset) => assetDownloadUrl(asset.id),
+  previewUrl = (asset) => assetPreviewUrl(asset.id, asset.updatedAt),
+  originalUrl = (asset) => assetOriginalUrl(asset.id, asset.updatedAt),
+  downloadUrl = (asset) => assetDownloadUrl(asset.id, asset.updatedAt),
   readOnly = false,
   allowDownload = true,
 }: LightboxProps) {

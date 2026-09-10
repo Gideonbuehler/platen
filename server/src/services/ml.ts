@@ -209,6 +209,58 @@ export async function embedText(query: string): Promise<Float32Array> {
   return assertDim(normalise(Float32Array.from(text_embeds.data as ArrayLike<number>)));
 }
 
+/**
+ * A generic "any photo" reference point in the same embedding space.
+ *
+ * CLIP similarities are not comparable across queries or across images. Some
+ * photos sit closer to *all* text than others, and different phrasings sit at
+ * different absolute levels — so a fixed cutoff on raw similarity either lets
+ * the whole library through or none of it. Searching "airplane" in a library
+ * with no aeroplanes still scores every photo around 0.20, which reads as five
+ * confident matches.
+ *
+ * Scoring each hit against this baseline instead cancels both biases: what
+ * matters is how much *better* the query describes a photo than a generic
+ * phrase does. A photo nothing like the query lands near zero and is dropped.
+ */
+const BASELINE_PROMPTS = [
+  'a photo',
+  'a picture',
+  'an image',
+  'a snapshot',
+];
+
+let baselinePromise: Promise<Float32Array> | null = null;
+
+export async function getBaselineEmbedding(): Promise<Float32Array> {
+  if (!baselinePromise) {
+    baselinePromise = (async () => {
+      await ensureModels();
+      const { tokenizer, model } = text!;
+
+      const inputs = tokenizer(BASELINE_PROMPTS, { padding: true, truncation: true });
+      const { text_embeds } = await model(inputs);
+
+      const flat = Float32Array.from(text_embeds.data as ArrayLike<number>);
+      const count = BASELINE_PROMPTS.length;
+      const mean = new Float32Array(EMBEDDING_DIM);
+
+      for (let p = 0; p < count; p++) {
+        for (let d = 0; d < EMBEDDING_DIM; d++) {
+          mean[d] = mean[d]! + flat[p * EMBEDDING_DIM + d]!;
+        }
+      }
+      for (let d = 0; d < EMBEDDING_DIM; d++) mean[d] = mean[d]! / count;
+
+      return normalise(mean);
+    })().catch((err) => {
+      baselinePromise = null;
+      throw err;
+    });
+  }
+  return baselinePromise;
+}
+
 /** pgvector's text input format. postgres.js sends it as a string literal. */
 export function toVectorLiteral(vec: Float32Array): string {
   return `[${Array.from(vec).join(',')}]`;

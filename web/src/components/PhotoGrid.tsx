@@ -37,7 +37,7 @@ export function PhotoGrid({
   empty,
   onLoadMore,
   loadingMore,
-  thumbnailUrl = (asset) => assetThumbnailUrl(asset.id),
+  thumbnailUrl = (asset) => assetThumbnailUrl(asset.id, asset.updatedAt),
 }: PhotoGridProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
