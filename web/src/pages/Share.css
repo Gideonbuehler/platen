@@ -1,0 +1,76 @@
+.share {
+  max-width: 1500px;
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-5) var(--space-8);
+}
+
+.share-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: var(--space-5);
+  color: var(--accent);
+}
+
+.share-gate {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: 100%;
+  max-width: 360px;
+  padding: var(--space-6);
+  text-align: center;
+  box-shadow: var(--shadow-lg);
+  animation: rise-in var(--duration-slow) var(--ease);
+}
+
+.share-gate svg {
+  align-self: center;
+  color: var(--accent);
+}
+
+.share-gate h1 {
+  font-size: var(--text-lg);
+  color: var(--text-primary);
+}
+
+.share-gate p {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.share-header {
+  margin-bottom: var(--space-6);
+}
+
+.share-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text-tertiary);
+}
+
+.share-brand svg {
+  color: var(--accent);
+}
+
+.share-header h1 {
+  font-size: var(--text-2xl);
+  letter-spacing: var(--tracking-tight);
+}
+
+.share-header p {
+  margin-top: var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+}
+
+.share-empty {
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+}

@@ -1,0 +1,223 @@
+# Aperture
+
+Self-hosted photo and video backup for Unraid, with a mobile app that backs up
+your camera roll automatically.
+
+An alternative to Immich that is deliberately lighter to run and nicer to look
+at: two containers instead of four, no Redis, and a justified timeline that
+shows your photos at their real aspect ratios instead of cropping everything
+into squares.
+
+```
+aperture/
+├── server/     Fastify API + background job worker (TypeScript)
+├── web/        React web client, built into the server image
+├── mobile/     Expo app for iOS and Android
+├── shared/     API types the server and web client both compile against
+└── docker/     Dockerfile, compose stack, Unraid template
+```
+
+---
+
+## What it does
+
+- **Automatic phone backup** — the mobile app uploads new photos and videos in
+  the background, with layered de-duplication so a re-scan costs almost nothing.
+- **Justified timeline** — rows fill the width edge to edge and every photo
+  keeps its aspect ratio. Panoramas stay panoramas.
+- **Videos** — stored, thumbnailed via ffmpeg, and streamed with byte-range
+  requests so seeking works.
+- **Albums and sharing** — share with another account on your server, or mint a
+  public link with an optional password and expiry.
+- **Natural-language search** — CLIP embeddings in pgvector, so "beach at
+  sunset" finds the photo without you ever having tagged it. Optional.
+- **Multi-user** — each person's library is private to them; an admin manages
+  accounts and quotas.
+- **Trash** — deletes are recoverable for 30 days before the bytes are removed.
+
+---
+
+## Quick start on Unraid
+
+### 1. Get the files onto the server
+
+```bash
+cd /mnt/user/appdata
+git clone <your-repo-url> aperture
+cd aperture
+```
+
+### 2. Configure
+
+```bash
+cp .env.example docker/.env
+```
+
+Edit `docker/.env`. Two values must be changed:
+
+```bash
+# Generate each of these with: openssl rand -hex 32
+JWT_SECRET=...
+POSTGRES_PASSWORD=...
+
+# The address your PHONE will use. Not localhost.
+PUBLIC_URL=http://tower.local:2283
+
+# Where the photos actually live — an array share you back up.
+LIBRARY_PATH=/mnt/user/photos
+# Regenerable, so cache/SSD is ideal and it needs no backup.
+THUMBS_PATH=/mnt/user/appdata/aperture/thumbs
+DB_PATH=/mnt/user/appdata/aperture/db
+```
+
+### 3. Start it
+
+```bash
+docker compose -f docker/docker-compose.yml up -d
+```
+
+Open `http://tower.local:2283`. The first account you create becomes the
+administrator. Self-registration is off by default — invite everyone else from
+**Settings → People**.
+
+> Prefer the Unraid UI? `docker/aperture.unraid.xml` is a Community
+> Applications template for the app container. You still need a
+> `pgvector/pgvector:pg17` container alongside it, so the compose file above is
+> the easier path.
+
+---
+
+## The mobile app
+
+The app is not on the App Store or Play Store — you build it yourself, which is
+the trade for it talking only to your own server.
+
+```bash
+cd mobile
+npm install
+npx expo prebuild          # generates the native projects
+npx expo run:android       # or: npx expo run:ios
+```
+
+For a device build you can install without a cable, use EAS:
+
+```bash
+npx eas build --profile preview --platform android
+```
+
+**In the app:** enter your server address (`tower.local:2283` — the scheme is
+optional), sign in, then open **Backup** and turn on automatic backup.
+
+### How reliable is background backup, honestly?
+
+- **Android** — genuinely automatic. Backup runs on a periodic WorkManager job,
+  survives the app being swiped away, and resumes after a reboot.
+- **iOS** — partly. Apple gives no API that guarantees background execution.
+  The app takes whatever opportunistic windows iOS offers (which get more
+  frequent the more you use the app) **and** runs a full sync every time you
+  open it. In practice: open the app once a day and nothing is ever missed.
+
+Anyone claiming a continuous iOS background uploader is working around this the
+same way — with a foreground sync.
+
+---
+
+## Configuration
+
+| Variable | Default | What it does |
+| --- | --- | --- |
+| `PUBLIC_URL` | `http://localhost:3000` | Address the phone and share links use. Must be reachable from your devices. |
+| `JWT_SECRET` | — | **Required.** Signs login tokens. Changing it signs everyone out. |
+| `DATABASE_URL` | — | **Required.** Postgres connection string; needs the pgvector extension. |
+| `ALLOW_REGISTRATION` | `false` | Let anyone who can reach the server create an account. |
+| `ENABLE_ML` | `true` | Natural-language search. Off skips a ~250 MB model download and its CPU cost. |
+| `ML_MODEL` | `Xenova/clip-vit-base-patch32` | Must be a 512-dim CLIP model to match the database column. |
+| `JOB_CONCURRENCY` | `3` | Thumbnails/embeddings processed at once. Roughly one per core you'll spare. |
+| `TRASH_RETENTION_DAYS` | `30` | How long deleted photos stay recoverable. |
+| `MAX_UPLOAD_BYTES` | 8 GiB | Ceiling on a single file. |
+
+---
+
+## How it works
+
+### Storage layout
+
+```
+/data/library/<userId>/<yyyy>/<MM>/<assetId>.jpg   originals, never modified
+/data/thumbs/<userId>/<assetId>/thumb.webp         320px  grid tile
+/data/thumbs/<userId>/<assetId>/preview.webp       1600px lightbox
+/data/tmp/                                         in-flight uploads
+```
+
+Originals are written once and never touched again. Everything under
+`/data/thumbs` is regenerable from **Settings → Maintenance**, so it does not
+need to be in your backup plan — only `/data/library` and the database do.
+
+### De-duplication
+
+Uploads are keyed on the SHA-256 of the file's bytes, hashed on the server as
+it streams to disk. `UNIQUE (owner_id, checksum)` makes a re-upload physically
+impossible, so the API answers `duplicate: true` instead of storing a second
+copy.
+
+The phone layers two caches on top of that, purely for speed:
+
+1. A local ledger of already-uploaded camera-roll ids — the hot path.
+2. `GET /api/assets/device/:deviceId`, which rebuilds that ledger after a
+   reinstall so a fresh install doesn't re-send a library the server has.
+
+Hashing on the phone was deliberately rejected: reading a 4 GB video into JS to
+digest it costs far more than letting the server hash bytes it already receives.
+
+### Capture times
+
+EXIF `DateTimeOriginal` is bare wall-clock text with no timezone. Aperture
+re-anchors it so the time you see always matches the time the camera recorded —
+whether the server runs in UTC and you're in Berlin, or the other way round.
+When a photo does record a UTC offset, that's stored too and used for display.
+
+Without this, an evening photo can slide into the next day's row depending on
+where the server happens to live.
+
+### Background jobs
+
+The queue is a Postgres table drained with `FOR UPDATE SKIP LOCKED` — no Redis,
+one less container, and more than fast enough at photo-library scale. Uploads
+return as soon as the bytes are safe on disk; metadata, thumbnails and
+embeddings follow behind, so a phone on a slow link is never held open.
+
+---
+
+## Development
+
+```bash
+npm install
+docker run -d --name aperture-db \
+  -e POSTGRES_USER=aperture -e POSTGRES_PASSWORD=dev \
+  -e POSTGRES_DB=aperture -p 5432:5432 pgvector/pgvector:pg17
+
+cp .env.example .env      # point DATABASE_URL at localhost:5432
+npm run dev               # API on :3000, web on :5173
+```
+
+`npm run typecheck` covers all three TypeScript projects. Migrations in
+`server/migrations/` are numbered, applied in order inside a transaction, and
+recorded in `schema_migrations`; there are no down migrations, because rolling
+forward is safer for a system holding irreplaceable data.
+
+---
+
+## Backups
+
+Aperture is where your photos live, so it needs a backup of its own:
+
+- `/data/library` — the originals. Irreplaceable.
+- The Postgres volume — albums, favourites, share links, EXIF, users.
+  `docker exec aperture-db pg_dump -U aperture aperture | gzip > aperture.sql.gz`
+- `/data/thumbs` — skip it. Regenerable in one click.
+
+---
+
+## Licence
+
+MIT.

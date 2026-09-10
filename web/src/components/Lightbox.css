@@ -1,0 +1,262 @@
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-lightbox);
+  display: flex;
+  flex-direction: column;
+  animation: fade-in var(--duration-base) var(--ease);
+}
+
+/* Near-opaque rather than fully black: a hint of the page behind keeps the
+   overlay feeling like a layer rather than a navigation. */
+.lightbox-backdrop {
+  position: absolute;
+  inset: 0;
+  background: var(--scrim-strong);
+  backdrop-filter: blur(28px) saturate(1.1);
+}
+
+/* ---------------------------------------------------------------------------
+ * Header
+ * ------------------------------------------------------------------------ */
+
+.lightbox-header {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  padding-top: max(var(--space-3), env(safe-area-inset-top));
+  color: #fff;
+}
+
+.lightbox-title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+}
+
+.lightbox-filename {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lightbox-position {
+  font-size: var(--text-xs);
+  color: rgba(255, 255, 255, 0.55);
+  font-variant-numeric: tabular-nums;
+}
+
+.lightbox-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.lightbox-btn {
+  color: rgba(255, 255, 255, 0.82);
+  border-radius: var(--radius-full);
+}
+
+.lightbox-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+.lightbox-btn.is-active {
+  color: var(--accent);
+}
+
+/* ---------------------------------------------------------------------------
+ * Stage
+ * ------------------------------------------------------------------------ */
+
+.lightbox-stage {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: 0 var(--space-4) var(--space-4);
+}
+
+.lightbox-media {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+.lightbox-media img,
+.lightbox-media video {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: var(--radius-sm);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
+}
+
+.lightbox-media img {
+  opacity: 0;
+  transition: opacity var(--duration-base) var(--ease);
+}
+
+.lightbox-media img.is-loaded {
+  opacity: 1;
+}
+
+.lightbox-loading {
+  position: absolute;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* ---------------------------------------------------------------------------
+ * Navigation
+ * ------------------------------------------------------------------------ */
+
+.lightbox-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 3;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-full);
+  background: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(10px);
+  color: rgba(255, 255, 255, 0.9);
+  opacity: 0;
+  transition:
+    opacity var(--duration-base) var(--ease),
+    background var(--duration-fast) var(--ease);
+}
+
+.lightbox:hover .lightbox-nav,
+.lightbox-nav:focus-visible {
+  opacity: 1;
+}
+
+.lightbox-nav:hover {
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.lightbox-nav-prev {
+  left: var(--space-4);
+}
+
+.lightbox-nav-next {
+  right: var(--space-4);
+}
+
+/* Arrows are useless without a pointer; touch users swipe or use the strip. */
+@media (hover: none) {
+  .lightbox-nav {
+    opacity: 1;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Info panel
+ * ------------------------------------------------------------------------ */
+
+.lightbox-info {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 4;
+  width: min(340px, 100%);
+  padding: var(--space-5);
+  padding-top: max(var(--space-5), env(safe-area-inset-top));
+  overflow-y: auto;
+  background: var(--surface-raised);
+  border-left: 1px solid var(--border-subtle);
+  animation: rise-in var(--duration-base) var(--ease);
+}
+
+.lightbox-info h3 {
+  margin-bottom: var(--space-5);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.lightbox-info dl {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.lightbox-info dt {
+  margin-bottom: var(--space-1);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.lightbox-info dd {
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  line-height: 1.55;
+  word-break: break-word;
+}
+
+.lightbox-muted {
+  color: var(--text-secondary);
+}
+
+.lightbox-link {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.lightbox-link:hover {
+  text-decoration: underline;
+}
+
+/* Exposure facts are scannable as chips, not as a sentence. */
+.lightbox-exposure {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.lightbox-exposure span {
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-subtle);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+
+@media (max-width: 700px) {
+  .lightbox-info {
+    top: auto;
+    width: 100%;
+    max-height: 62%;
+    border-left: none;
+    border-top: 1px solid var(--border-subtle);
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  }
+}

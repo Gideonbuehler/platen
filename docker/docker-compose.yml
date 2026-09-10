@@ -1,0 +1,94 @@
+# Aperture — self-hosted photo backup
+#
+# Unraid quick start:
+#   1. Put this file in /mnt/user/appdata/aperture/
+#   2. Copy .env.example next to it as .env and fill in the two secrets
+#   3. docker compose up -d
+#
+# The APPDATA_PATH / LIBRARY_PATH variables let you keep the database on fast
+# cache storage while the photos themselves live on the array.
+
+services:
+  aperture:
+    # Build locally, or swap for `image: ghcr.io/<you>/aperture:latest`
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: aperture:latest
+    container_name: aperture
+    restart: unless-stopped
+
+    ports:
+      - "${WEBUI_PORT:-2283}:3000"
+
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:2283}
+      DATABASE_URL: postgres://aperture:${POSTGRES_PASSWORD}@aperture-db:5432/aperture
+      JWT_SECRET: ${JWT_SECRET}
+      ALLOW_REGISTRATION: ${ALLOW_REGISTRATION:-false}
+      JOB_CONCURRENCY: ${JOB_CONCURRENCY:-3}
+      ENABLE_ML: ${ENABLE_ML:-true}
+      ML_MODEL: ${ML_MODEL:-Xenova/clip-vit-base-patch32}
+      TRASH_RETENTION_DAYS: ${TRASH_RETENTION_DAYS:-30}
+      TZ: ${TZ:-UTC}
+
+    volumes:
+      # Originals. Point this at the array share you actually want backed up.
+      - ${LIBRARY_PATH:-./data/library}:/data/library
+      # Derivatives — regenerable, so cache/SSD is ideal and it need not be
+      # part of your backup plan.
+      - ${THUMBS_PATH:-./data/thumbs}:/data/thumbs
+      # In-flight uploads. Keep on the same filesystem as the library when you
+      # can: a cross-device move has to copy the bytes instead of renaming.
+      - ${UPLOAD_TMP_PATH:-./data/tmp}:/data/tmp
+      # Downloaded CLIP weights (~250 MB), cached so restarts are instant.
+      - ${ML_CACHE_PATH:-./data/ml-cache}:/data/ml-cache
+
+    depends_on:
+      aperture-db:
+        condition: service_healthy
+
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/api/server/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+
+  aperture-db:
+    # pgvector's image is plain Postgres plus the extension, so it behaves
+    # exactly like the official image for backup and upgrade purposes.
+    image: pgvector/pgvector:pg17
+    container_name: aperture-db
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_USER: aperture
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: aperture
+      # Checksums catch silent corruption early. Worth the small write cost for
+      # a database that indexes irreplaceable photos.
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+      TZ: ${TZ:-UTC}
+
+    volumes:
+      - ${DB_PATH:-./data/db}:/var/lib/postgresql/data
+
+    healthcheck:
+      # The database name is passed explicitly; without it pg_isready reports
+      # ready while the init scripts are still running on first boot.
+      test: ["CMD-SHELL", "pg_isready -U aperture -d aperture"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+    # Not published to the host: only the app container needs to reach it.
+    expose:
+      - "5432"

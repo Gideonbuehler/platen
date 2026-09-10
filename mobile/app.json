@@ -1,0 +1,64 @@
+{
+  "expo": {
+    "name": "Aperture",
+    "slug": "aperture",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "aperture",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "splash": {
+      "backgroundColor": "#0b0b0e",
+      "resizeMode": "contain"
+    },
+    "assetBundlePatterns": ["**/*"],
+
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.aperture.app",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Aperture needs access to your photos so it can back them up to your own server.",
+        "NSPhotoLibraryAddUsageDescription": "Aperture saves photos you download from your server back to your library.",
+        "_comment_ats": "Most people run Aperture on a LAN address over plain HTTP. iOS blocks that by default, so local networking is explicitly permitted here. Public HTTPS deployments are unaffected.",
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true,
+          "NSAllowsArbitraryLoads": true
+        },
+        "NSLocalNetworkUsageDescription": "Aperture connects to your photo server on your home network.",
+        "UIBackgroundModes": ["fetch", "processing"]
+      }
+    },
+
+    "android": {
+      "package": "com.aperture.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#0b0b0e"
+      },
+      "permissions": [
+        "READ_MEDIA_IMAGES",
+        "READ_MEDIA_VIDEO",
+        "READ_EXTERNAL_STORAGE",
+        "ACCESS_NETWORK_STATE",
+        "FOREGROUND_SERVICE"
+      ],
+      "usesCleartextTraffic": true
+    },
+
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Aperture needs access to your photos so it can back them up to your own server.",
+          "savePhotosPermission": "Aperture saves photos you download from your server back to your library.",
+          "isAccessMediaLocationEnabled": true
+        }
+      ]
+    ],
+
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

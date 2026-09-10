@@ -1,0 +1,88 @@
+/* Floating over the grid, centred on the content column rather than the
+   viewport, so it does not sit under the sidebar on wide screens. */
+.selection-bar {
+  position: fixed;
+  bottom: var(--space-5);
+  left: calc(var(--sidebar-width) + var(--space-5));
+  right: var(--space-5);
+  z-index: var(--z-dropdown);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: 0 auto;
+  max-width: 720px;
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-full);
+  box-shadow: var(--shadow-lg), var(--ring-inset);
+  animation: rise-in var(--duration-base) var(--ease);
+}
+
+.selection-btn {
+  color: var(--text-secondary);
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
+
+.selection-btn:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.selection-count {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.selection-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-left: auto;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.selection-actions::-webkit-scrollbar {
+  display: none;
+}
+
+.selection-action {
+  height: 34px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-full);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.selection-action:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.selection-action.is-danger:hover {
+  background: var(--danger-muted);
+  color: var(--danger);
+}
+
+@media (max-width: 860px) {
+  .selection-bar {
+    left: var(--space-3);
+    right: var(--space-3);
+    bottom: var(--space-3);
+  }
+
+  /* Below this width the labels are what overflow first; the icons still
+     carry the meaning, and each button keeps its aria-label. */
+  .selection-label {
+    display: none;
+  }
+
+  .selection-action {
+    padding: 0 var(--space-2);
+  }
+}

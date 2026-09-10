@@ -1,0 +1,402 @@
+import type {
+  Album,
+  ApiError,
+  Asset,
+  AuthResponse,
+  AuthTokens,
+  CreateAlbumRequest,
+  Page,
+  SearchHit,
+  ServerInfo,
+  ServerStats,
+  ShareLink,
+  TimelineBucket,
+  UploadCheckResponse,
+  UploadResult,
+  User,
+} from '@aperture/shared';
+
+const STORAGE_KEY = 'aperture.auth';
+
+export class ApiRequestError extends Error {
+  constructor(
+    public status: number,
+    public code: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'ApiRequestError';
+  }
+}
+
+interface StoredAuth {
+  accessToken: string;
+  refreshToken: string;
+  /** Epoch ms at which the access token stops being valid. */
+  expiresAt: number;
+}
+
+function readAuth(): StoredAuth | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as StoredAuth) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeAuth(tokens: AuthTokens | null): void {
+  try {
+    if (!tokens) {
+      localStorage.removeItem(STORAGE_KEY);
+      return;
+    }
+    const stored: StoredAuth = {
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      // Refresh a minute early so a request never races the expiry.
+      expiresAt: Date.now() + (tokens.expiresIn - 60) * 1000,
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
+  } catch {
+    // Private browsing with storage disabled: the session simply will not
+    // survive a reload, which is acceptable.
+  }
+}
+
+type AuthListener = (authenticated: boolean) => void;
+const listeners = new Set<AuthListener>();
+
+export function onAuthChange(listener: AuthListener): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+function announce(authenticated: boolean): void {
+  for (const listener of listeners) listener(authenticated);
+}
+
+export function isAuthenticated(): boolean {
+  return readAuth() !== null;
+}
+
+export function getAccessToken(): string | null {
+  return readAuth()?.accessToken ?? null;
+}
+
+/**
+ * Single-flight refresh.
+ *
+ * Without this, a screen that fires eight thumbnail requests at once on a
+ * stale token would kick off eight refreshes, and token rotation means seven
+ * of them would fail and log the user out.
+ */
+let refreshInFlight: Promise<string | null> | null = null;
+
+async function refreshAccessToken(): Promise<string | null> {
+  if (refreshInFlight) return refreshInFlight;
+
+  refreshInFlight = (async () => {
+    const auth = readAuth();
+    if (!auth) return null;
+
+    try {
+      const response = await fetch('/api/auth/refresh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken: auth.refreshToken }),
+      });
+
+      if (!response.ok) {
+        writeAuth(null);
+        announce(false);
+        return null;
+      }
+
+      const tokens = (await response.json()) as AuthTokens;
+      writeAuth(tokens);
+      return tokens.accessToken;
+    } catch {
+      // Network failure: keep the stored refresh token so a reconnect can
+      // recover the session instead of forcing a sign-in.
+      return null;
+    } finally {
+      refreshInFlight = null;
+    }
+  })();
+
+  return refreshInFlight;
+}
+
+interface RequestOptions extends Omit<RequestInit, 'body'> {
+  body?: unknown;
+  /** Skips the Authorization header (public share endpoints). */
+  anonymous?: boolean;
+  raw?: boolean;
+}
+
+async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const { body, anonymous, raw, headers, ...rest } = options;
+
+  const send = async (token: string | null): Promise<Response> => {
+    const finalHeaders = new Headers(headers);
+    if (token && !anonymous) finalHeaders.set('Authorization', `Bearer ${token}`);
+
+    let payload: BodyInit | undefined;
+    if (body instanceof FormData) {
+      // Let the browser set the multipart boundary.
+      payload = body;
+    } else if (body !== undefined) {
+      finalHeaders.set('Content-Type', 'application/json');
+      payload = JSON.stringify(body);
+    }
+
+    return fetch(`/api${path}`, { ...rest, headers: finalHeaders, body: payload });
+  };
+
+  let auth = readAuth();
+
+  // Proactive refresh: cheaper than letting the request 401 and retrying.
+  if (!anonymous && auth && auth.expiresAt <= Date.now()) {
+    await refreshAccessToken();
+    auth = readAuth();
+  }
+
+  let response = await send(auth?.accessToken ?? null);
+
+  if (response.status === 401 && !anonymous) {
+    const token = await refreshAccessToken();
+    if (token) {
+      response = await send(token);
+    } else {
+      writeAuth(null);
+      announce(false);
+    }
+  }
+
+  if (!response.ok) {
+    let detail: ApiError | null = null;
+    try {
+      detail = (await response.json()) as ApiError;
+    } catch {
+      // Non-JSON error body (a proxy timeout page, say).
+    }
+    throw new ApiRequestError(
+      response.status,
+      detail?.error ?? 'request_failed',
+      detail?.message ?? `Request failed with status ${response.status}.`,
+    );
+  }
+
+  if (raw || response.status === 204) return undefined as T;
+  return (await response.json()) as T;
+}
+
+// ---------------------------------------------------------------------------
+// Media URLs
+//
+// <img> cannot send an Authorization header, so media URLs carry the access
+// token as a query parameter. The server only honours it on GET media routes.
+// ---------------------------------------------------------------------------
+
+function mediaUrl(path: string): string {
+  const token = getAccessToken();
+  return token ? `/api${path}?token=${encodeURIComponent(token)}` : `/api${path}`;
+}
+
+export const assetThumbnailUrl = (id: string) => mediaUrl(`/assets/${id}/thumbnail`);
+export const assetPreviewUrl = (id: string) => mediaUrl(`/assets/${id}/preview`);
+export const assetOriginalUrl = (id: string) => mediaUrl(`/assets/${id}/original`);
+export const assetDownloadUrl = (id: string) => `${mediaUrl(`/assets/${id}/original`)}&download=true`;
+
+export const shareThumbnailUrl = (key: string, id: string) =>
+  `/api/public/${key}/asset/${id}/thumbnail`;
+export const sharePreviewUrl = (key: string, id: string) =>
+  `/api/public/${key}/asset/${id}/preview`;
+export const shareOriginalUrl = (key: string, id: string) =>
+  `/api/public/${key}/asset/${id}/original`;
+
+// ---------------------------------------------------------------------------
+// Typed endpoints
+// ---------------------------------------------------------------------------
+
+export const api = {
+  // --- server ---
+  serverInfo: () => request<ServerInfo>('/server/info', { anonymous: true }),
+  stats: () => request<ServerStats>('/server/stats'),
+  users: () => request<User[]>('/server/users'),
+  createUser: (body: {
+    email: string;
+    password: string;
+    name: string;
+    isAdmin?: boolean;
+    quotaBytes?: number | null;
+  }) => request<User>('/server/users', { method: 'POST', body }),
+  updateUser: (id: string, body: Record<string, unknown>) =>
+    request<User>(`/server/users/${id}`, { method: 'PATCH', body }),
+  deleteUser: (id: string) => request<void>(`/server/users/${id}`, { method: 'DELETE', raw: true }),
+  reindex: (what: 'thumbnails' | 'metadata' | 'embeddings') =>
+    request<{ queued: number }>('/server/jobs/reindex', { method: 'POST', body: { what } }),
+  retryJobs: (type?: string) =>
+    request<{ requeued: number }>('/server/jobs/retry', { method: 'POST', body: { type } }),
+
+  // --- auth ---
+  async login(email: string, password: string): Promise<User> {
+    const result = await request<AuthResponse>('/auth/login', {
+      method: 'POST',
+      anonymous: true,
+      body: { email, password, deviceName: navigator.userAgent.slice(0, 100) },
+    });
+    writeAuth(result);
+    announce(true);
+    return result.user;
+  },
+
+  async register(email: string, password: string, name: string): Promise<User> {
+    const result = await request<AuthResponse>('/auth/register', {
+      method: 'POST',
+      anonymous: true,
+      body: { email, password, name, deviceName: navigator.userAgent.slice(0, 100) },
+    });
+    writeAuth(result);
+    announce(true);
+    return result.user;
+  },
+
+  async logout(): Promise<void> {
+    const auth = readAuth();
+    if (auth) {
+      await request<void>('/auth/logout', {
+        method: 'POST',
+        body: { refreshToken: auth.refreshToken },
+        raw: true,
+      }).catch(() => {});
+    }
+    writeAuth(null);
+    announce(false);
+  },
+
+  me: () => request<User>('/auth/me'),
+  updateMe: (body: { name?: string; password?: string; currentPassword?: string }) =>
+    request<User>('/auth/me', { method: 'PATCH', body }),
+  sessions: () =>
+    request<{ id: string; device_name: string | null; created_at: string; expires_at: string }[]>(
+      '/auth/sessions',
+    ),
+  revokeSession: (id: string) =>
+    request<void>(`/auth/sessions/${id}`, { method: 'DELETE', raw: true }),
+
+  // --- assets ---
+  timeline: (params: Record<string, string | number | boolean | undefined>) => {
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== undefined && value !== false) query.set(key, String(value));
+    }
+    return request<Page<Asset>>(`/assets?${query.toString()}`);
+  },
+  buckets: (params: Record<string, string | boolean | undefined> = {}) => {
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== undefined && value !== false) query.set(key, String(value));
+    }
+    return request<TimelineBucket[]>(`/assets/timeline/buckets?${query.toString()}`);
+  },
+  asset: (id: string) => request<Asset>(`/assets/${id}`),
+  updateAsset: (id: string, body: { isFavorite?: boolean; isArchived?: boolean }) =>
+    request<Asset>(`/assets/${id}`, { method: 'PATCH', body }),
+  deleteAssets: (ids: string[], permanent = false) =>
+    request<void>('/assets/delete', { method: 'POST', body: { ids, permanent }, raw: true }),
+  restoreAssets: (ids: string[]) =>
+    request<void>('/assets/restore', { method: 'POST', body: { ids }, raw: true }),
+  checkUploads: (checksums: string[]) =>
+    request<UploadCheckResponse>('/assets/check', { method: 'POST', body: { checksums } }),
+
+  uploadFile: (file: File, onProgress?: (fraction: number) => void): Promise<UploadResult> => {
+    // XHR rather than fetch: fetch still cannot report upload progress, and a
+    // progress bar matters a lot when someone drops 500 photos into the page.
+    return new Promise((resolve, reject) => {
+      const form = new FormData();
+      form.append('takenAt', new Date(file.lastModified).toISOString());
+      form.append('file', file, file.name);
+
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/api/assets/upload');
+
+      const token = getAccessToken();
+      if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+
+      xhr.upload.addEventListener('progress', (event) => {
+        if (event.lengthComputable && onProgress) onProgress(event.loaded / event.total);
+      });
+
+      xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(JSON.parse(xhr.responseText) as UploadResult);
+        } else {
+          let message = `Upload failed (${xhr.status}).`;
+          try {
+            message = (JSON.parse(xhr.responseText) as ApiError).message;
+          } catch {
+            /* keep the generic message */
+          }
+          reject(new ApiRequestError(xhr.status, 'upload_failed', message));
+        }
+      });
+
+      xhr.addEventListener('error', () =>
+        reject(new ApiRequestError(0, 'network_error', 'The connection dropped during upload.')),
+      );
+      xhr.addEventListener('abort', () =>
+        reject(new ApiRequestError(0, 'aborted', 'Upload cancelled.')),
+      );
+
+      xhr.send(form);
+    });
+  },
+
+  // --- albums ---
+  albums: () => request<Album[]>('/albums'),
+  album: (id: string) => request<Album>(`/albums/${id}`),
+  albumAssets: (id: string) => request<Page<Asset>>(`/albums/${id}/assets`),
+  createAlbum: (body: CreateAlbumRequest) => request<Album>('/albums', { method: 'POST', body }),
+  updateAlbum: (id: string, body: Record<string, unknown>) =>
+    request<Album>(`/albums/${id}`, { method: 'PATCH', body }),
+  deleteAlbum: (id: string) => request<void>(`/albums/${id}`, { method: 'DELETE', raw: true }),
+  addToAlbum: (id: string, assetIds: string[]) =>
+    request<{ added: number }>(`/albums/${id}/assets`, { method: 'POST', body: { assetIds } }),
+  removeFromAlbum: (id: string, assetIds: string[]) =>
+    request<void>(`/albums/${id}/assets`, { method: 'DELETE', body: { assetIds }, raw: true }),
+  shareAlbumWith: (id: string, email: string, canEdit = false) =>
+    request<Album>(`/albums/${id}/share`, { method: 'POST', body: { email, canEdit } }),
+
+  // --- share links ---
+  shareLinks: () => request<ShareLink[]>('/shares'),
+  createShareLink: (body: {
+    albumId?: string;
+    assetId?: string;
+    password?: string;
+    allowDownload?: boolean;
+    expiresAt?: string | null;
+  }) => request<ShareLink>('/shares', { method: 'POST', body }),
+  deleteShareLink: (id: string) => request<void>(`/shares/${id}`, { method: 'DELETE', raw: true }),
+
+  // --- public share viewing ---
+  shareInfo: (key: string) =>
+    request<{ requiresPassword: boolean; allowDownload: boolean; isAlbum: boolean; title: string }>(
+      `/public/${key}/info`,
+      { anonymous: true },
+    ),
+  shareContents: (key: string, password?: string) =>
+    request<{ title: string; allowDownload: boolean; isAlbum: boolean; assets: Asset[] }>(
+      `/public/${key}`,
+      { anonymous: true, headers: password ? { 'X-Share-Password': password } : undefined },
+    ),
+
+  // --- search ---
+  search: (query: string, threshold = 0.18) =>
+    request<SearchHit[]>('/search', { method: 'POST', body: { query, threshold } }),
+  searchMetadata: (query: string) =>
+    request<Asset[]>(`/search/metadata?q=${encodeURIComponent(query)}`),
+  searchStatus: () =>
+    request<{ enabled: boolean; model: string; total: number; indexed: number }>('/search/status'),
+};

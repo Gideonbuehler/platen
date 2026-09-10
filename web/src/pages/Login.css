@@ -1,0 +1,110 @@
+.login {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: var(--space-5);
+  overflow: hidden;
+}
+
+/* A slow warm glow behind the card. It gives the sign-in screen some depth
+   without a stock photo background, which would fight the theme. */
+.login-aurora {
+  position: absolute;
+  top: -30%;
+  left: 50%;
+  width: min(900px, 130vw);
+  height: min(900px, 130vw);
+  transform: translateX(-50%);
+  background: radial-gradient(
+    circle at 50% 50%,
+    var(--accent-muted) 0%,
+    transparent 62%
+  );
+  filter: blur(30px);
+  pointer-events: none;
+}
+
+.login-card {
+  position: relative;
+  width: 100%;
+  max-width: 380px;
+  padding: var(--space-6);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg), var(--ring-inset);
+  animation: rise-in var(--duration-slow) var(--ease);
+}
+
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.login-brand svg {
+  color: var(--accent);
+}
+
+.login-brand h1 {
+  font-size: var(--text-xl);
+  letter-spacing: var(--tracking-tight);
+}
+
+.login-tagline {
+  margin-bottom: var(--space-6);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.login-hint {
+  margin-top: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.login-error {
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--danger-muted);
+  border: 1px solid var(--danger);
+  font-size: var(--text-sm);
+  color: var(--danger);
+}
+
+.login-submit {
+  height: 42px;
+  margin-top: var(--space-1);
+}
+
+.login-switch {
+  display: block;
+  width: 100%;
+  margin-top: var(--space-5);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.login-switch:hover {
+  color: var(--accent);
+}
+
+.login-offline {
+  margin-top: var(--space-4);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--surface-overlay);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  text-align: center;
+}

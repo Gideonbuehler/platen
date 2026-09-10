@@ -1,0 +1,163 @@
+/*
+ * Aperture design tokens.
+ *
+ * Dark is the primary theme, not an afterthought: photographs carry their own
+ * colour, and a near-black surround keeps the UI from competing with them.
+ * The base is a very slightly blue-shifted charcoal rather than pure black —
+ * pure #000 makes dark image edges disappear into the page and makes the whole
+ * interface look like an OLED test card.
+ */
+
+:root {
+  /* --- Surfaces (dark, default) ------------------------------------------ */
+  --surface-base: #0b0b0e;
+  --surface-raised: #141418;
+  --surface-overlay: #1c1c22;
+  --surface-hover: #24242b;
+  --surface-active: #2d2d36;
+
+  /* Scrims sit over photography, so they are pure black at low alpha rather
+     than a tinted grey, which would cast a colour over the image. */
+  --scrim-soft: rgba(0, 0, 0, 0.4);
+  --scrim-strong: rgba(0, 0, 0, 0.82);
+
+  /* --- Text -------------------------------------------------------------- */
+  --text-primary: #f4f4f6;
+  --text-secondary: #a1a1ad;
+  --text-tertiary: #6e6e7a;
+  --text-inverse: #0b0b0e;
+
+  /* --- Lines ------------------------------------------------------------- */
+  --border-subtle: rgba(255, 255, 255, 0.07);
+  --border-default: rgba(255, 255, 255, 0.12);
+  --border-strong: rgba(255, 255, 255, 0.2);
+
+  /* --- Accent -------------------------------------------------------------
+     A warm ember rather than the usual product blue. It reads as photographic
+     (safelight, golden hour) and stays legible on both themes. Used sparingly:
+     selection, focus, the active nav item. */
+  --accent: #f2913d;
+  --accent-hover: #ff9f4d;
+  --accent-muted: rgba(242, 145, 61, 0.16);
+  --accent-border: rgba(242, 145, 61, 0.4);
+  --accent-contrast: #1a0f04;
+
+  --danger: #f2555a;
+  --danger-muted: rgba(242, 85, 90, 0.14);
+  --success: #4ec98a;
+
+  /* --- Type ---------------------------------------------------------------
+     One system stack. Shipping a webfont would cost a round trip on a LAN-only
+     app for no real gain. */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue',
+    Arial, 'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';
+  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+
+  --text-xs: 0.6875rem;   /* 11px — metadata, counts */
+  --text-sm: 0.8125rem;   /* 13px — body default in chrome */
+  --text-md: 0.9375rem;   /* 15px — body */
+  --text-lg: 1.125rem;    /* 18px — section titles */
+  --text-xl: 1.5rem;      /* 24px — page titles */
+  --text-2xl: 2rem;       /* 32px — display */
+
+  --weight-normal: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+
+  /* Negative tracking on large type; positive on small caps-ish labels. */
+  --tracking-tight: -0.02em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.04em;
+
+  --leading-tight: 1.2;
+  --leading-normal: 1.5;
+
+  /* --- Space (4px base) --------------------------------------------------- */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+  --space-8: 4rem;
+
+  /* --- Radii --------------------------------------------------------------- */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --radius-full: 999px;
+
+  /* --- Elevation ----------------------------------------------------------
+     Dark themes get depth from a light top edge plus a soft shadow, not from
+     shadow alone — shadow on near-black is nearly invisible. */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.6);
+  --ring-inset: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+
+  /* --- Motion -------------------------------------------------------------
+     One easing curve throughout. It decelerates hard, which reads as
+     "settling into place" rather than "sliding". */
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --duration-slow: 320ms;
+
+  /* --- Layout -------------------------------------------------------------- */
+  --sidebar-width: 232px;
+  --sidebar-width-collapsed: 68px;
+  --header-height: 60px;
+  --grid-gap: 3px;
+
+  /* --- Z-index ------------------------------------------------------------- */
+  --z-grid: 1;
+  --z-header: 10;
+  --z-sidebar: 20;
+  --z-dropdown: 30;
+  --z-lightbox: 40;
+  --z-toast: 50;
+}
+
+/* ---------------------------------------------------------------------------
+ * Light theme.
+ *
+ * Not a simple inversion: the surfaces are warm off-whites so that white
+ * borders in photographs still separate from the page, and the accent darkens
+ * to keep contrast on a light ground.
+ * ------------------------------------------------------------------------ */
+:root[data-theme='light'] {
+  --surface-base: #fbfbf9;
+  --surface-raised: #ffffff;
+  --surface-overlay: #ffffff;
+  --surface-hover: #f1f1ee;
+  --surface-active: #e7e7e3;
+
+  --scrim-soft: rgba(0, 0, 0, 0.35);
+  --scrim-strong: rgba(20, 20, 22, 0.9);
+
+  --text-primary: #17171a;
+  --text-secondary: #5f5f68;
+  --text-tertiary: #8b8b95;
+  --text-inverse: #ffffff;
+
+  --border-subtle: rgba(0, 0, 0, 0.07);
+  --border-default: rgba(0, 0, 0, 0.12);
+  --border-strong: rgba(0, 0, 0, 0.22);
+
+  --accent: #c96a15;
+  --accent-hover: #b05c0f;
+  --accent-muted: rgba(201, 106, 21, 0.12);
+  --accent-border: rgba(201, 106, 21, 0.35);
+  --accent-contrast: #ffffff;
+
+  --danger: #cf2f37;
+  --danger-muted: rgba(207, 47, 55, 0.1);
+  --success: #1d8a55;
+
+  --shadow-sm: 0 1px 2px rgba(16, 16, 20, 0.06);
+  --shadow-md: 0 4px 16px rgba(16, 16, 20, 0.1);
+  --shadow-lg: 0 16px 48px rgba(16, 16, 20, 0.16);
+  --ring-inset: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}

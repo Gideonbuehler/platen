@@ -1,0 +1,217 @@
+.albums-header,
+.album-detail-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+
+.albums-header h1 {
+  font-size: var(--text-2xl);
+}
+
+.albums-subtitle {
+  margin-top: 2px;
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+}
+
+.albums-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  color: var(--accent);
+}
+
+.albums-create {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+  padding: var(--space-3);
+  animation: rise-in var(--duration-base) var(--ease);
+}
+
+.albums-create .input {
+  flex: 1;
+}
+
+/* auto-fill (not auto-fit) keeps card width stable when there are only two
+   albums, instead of stretching them across the whole page. */
+.albums-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--space-4);
+}
+
+.album-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  border-radius: var(--radius-lg);
+  transition: transform var(--duration-fast) var(--ease);
+}
+
+.album-card:hover {
+  transform: translateY(-3px);
+}
+
+.album-cover {
+  position: relative;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-sm);
+}
+
+.album-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform var(--duration-slow) var(--ease);
+}
+
+.album-card:hover .album-cover img {
+  transform: scale(1.04);
+}
+
+.album-cover-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-tertiary);
+  opacity: 0.5;
+}
+
+.album-meta h3 {
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.album-meta p {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: 2px;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.album-shared {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.albums-empty,
+.album-detail-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  max-width: 400px;
+  margin: var(--space-8) auto;
+  text-align: center;
+}
+
+.albums-empty svg,
+.album-detail-empty svg {
+  color: var(--text-tertiary);
+  opacity: 0.55;
+}
+
+.albums-empty h2,
+.album-detail-empty h2 {
+  font-size: var(--text-lg);
+}
+
+.albums-empty p,
+.album-detail-empty p {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+/* --- album detail --------------------------------------------------------- */
+
+.album-back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-bottom: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.album-back:hover {
+  color: var(--text-primary);
+}
+
+.album-detail-header h1 {
+  font-size: var(--text-2xl);
+}
+
+.album-detail-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.album-share-panel {
+  margin-bottom: var(--space-5);
+  padding: var(--space-4);
+  animation: rise-in var(--duration-base) var(--ease);
+}
+
+.album-share-panel h3 {
+  margin-bottom: var(--space-3);
+  font-size: var(--text-sm);
+}
+
+.album-share-row {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.album-share-row .input {
+  flex: 1;
+}
+
+.album-share-link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--surface-base);
+  border: 1px solid var(--border-subtle);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  word-break: break-all;
+}
+
+.album-share-people {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.album-share-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 3px var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-subtle);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}

@@ -1,0 +1,94 @@
+<?xml version="1.0"?>
+<!--
+  Unraid Community Applications template for the Aperture app container.
+
+  This template covers the app only. Aperture also needs a Postgres 17 database
+  with the pgvector extension — the pgvector/pgvector:pg17 image. Either:
+
+    a) run the compose stack in docker/docker-compose.yml with the Compose
+       Manager plugin (simplest, brings up both containers), or
+    b) add pgvector/pgvector:pg17 as its own container first, then set
+       DATABASE_URL below to point at it.
+
+  Save as: /boot/config/plugins/dockerMan/templates-user/my-aperture.xml
+-->
+<Container version="2">
+  <Name>Aperture</Name>
+  <Repository>aperture:latest</Repository>
+  <Registry/>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support/>
+  <Project/>
+  <Overview>
+    Self-hosted photo and video backup with automatic upload from iOS and
+    Android, a justified timeline, albums, public share links and optional
+    CLIP-powered natural-language search. Requires a Postgres 17 database with
+    the pgvector extension.
+  </Overview>
+  <Category>Productivity: MediaApp:Photos</Category>
+  <WebUI>http://[IP]:[PORT:3000]/</WebUI>
+  <TemplateURL/>
+  <Icon/>
+  <ExtraParams/>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires>A Postgres 17 container with pgvector (image: pgvector/pgvector:pg17).</Requires>
+
+  <Config Name="WebUI Port" Target="3000" Default="2283" Mode="tcp"
+          Description="Port for the web interface and the mobile app API."
+          Type="Port" Display="always" Required="true" Mask="false">2283</Config>
+
+  <Config Name="Library" Target="/data/library" Default="/mnt/user/photos"
+          Mode="rw" Description="Where original photos and videos are stored. Put this on the array and include it in your backup plan."
+          Type="Path" Display="always" Required="true" Mask="false">/mnt/user/photos</Config>
+
+  <Config Name="Thumbnails" Target="/data/thumbs" Default="/mnt/user/appdata/aperture/thumbs"
+          Mode="rw" Description="Generated thumbnails and previews. Regenerable, so cache/SSD is ideal and it does not need backing up."
+          Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/aperture/thumbs</Config>
+
+  <Config Name="Upload temp" Target="/data/tmp" Default="/mnt/user/appdata/aperture/tmp"
+          Mode="rw" Description="In-flight uploads. Ideally on the same filesystem as the library, so finished uploads are a rename rather than a copy."
+          Type="Path" Display="advanced" Required="true" Mask="false">/mnt/user/appdata/aperture/tmp</Config>
+
+  <Config Name="ML model cache" Target="/data/ml-cache" Default="/mnt/user/appdata/aperture/ml-cache"
+          Mode="rw" Description="Cached CLIP weights (about 250 MB), so they are downloaded only once."
+          Type="Path" Display="advanced" Required="false" Mask="false">/mnt/user/appdata/aperture/ml-cache</Config>
+
+  <Config Name="DATABASE_URL" Target="DATABASE_URL" Default="postgres://aperture:CHANGEME@aperture-db:5432/aperture"
+          Mode="" Description="Connection string for the pgvector-enabled Postgres container."
+          Type="Variable" Display="always" Required="true" Mask="true">postgres://aperture:CHANGEME@aperture-db:5432/aperture</Config>
+
+  <Config Name="JWT_SECRET" Target="JWT_SECRET" Default=""
+          Mode="" Description="Secret used to sign login tokens. Generate with: openssl rand -hex 32. Changing it signs everyone out."
+          Type="Variable" Display="always" Required="true" Mask="true"/>
+
+  <Config Name="PUBLIC_URL" Target="PUBLIC_URL" Default="http://tower.local:2283"
+          Mode="" Description="The URL your phone uses to reach this server. Must be reachable from your devices, not just from the Unraid host."
+          Type="Variable" Display="always" Required="true" Mask="false">http://tower.local:2283</Config>
+
+  <Config Name="ALLOW_REGISTRATION" Target="ALLOW_REGISTRATION" Default="false"
+          Mode="" Description="Allow anyone who can reach the server to create an account. Leave false and invite people from Settings instead."
+          Type="Variable" Display="always" Required="false" Mask="false">false</Config>
+
+  <Config Name="ENABLE_ML" Target="ENABLE_ML" Default="true"
+          Mode="" Description="Natural-language photo search. Set false on low-power hardware to skip the model download and the CPU cost of indexing."
+          Type="Variable" Display="always" Required="false" Mask="false">true</Config>
+
+  <Config Name="JOB_CONCURRENCY" Target="JOB_CONCURRENCY" Default="3"
+          Mode="" Description="How many thumbnails or embeddings to process at once. Roughly one per CPU core you are willing to give it."
+          Type="Variable" Display="advanced" Required="false" Mask="false">3</Config>
+
+  <Config Name="TRASH_RETENTION_DAYS" Target="TRASH_RETENTION_DAYS" Default="30"
+          Mode="" Description="How long deleted photos stay recoverable in the trash before the files are removed."
+          Type="Variable" Display="advanced" Required="false" Mask="false">30</Config>
+
+  <Config Name="TZ" Target="TZ" Default="UTC"
+          Mode="" Description="Container timezone. Capture times come from each photo's own EXIF, so this only affects log timestamps."
+          Type="Variable" Display="advanced" Required="false" Mask="false">UTC</Config>
+</Container>

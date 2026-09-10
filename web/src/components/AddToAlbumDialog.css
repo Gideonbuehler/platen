@@ -1,0 +1,116 @@
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-lightbox);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-5);
+  background: var(--scrim-soft);
+  backdrop-filter: blur(6px);
+  animation: fade-in var(--duration-fast) var(--ease);
+}
+
+.dialog {
+  width: 100%;
+  max-width: 400px;
+  max-height: min(560px, 85vh);
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-lg);
+  animation: rise-in var(--duration-base) var(--ease);
+}
+
+.dialog-header {
+  padding: var(--space-4) var(--space-4) var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.dialog-header h2 {
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+}
+
+.dialog-create {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+}
+
+.dialog-create .input {
+  flex: 1;
+}
+
+.dialog-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 var(--space-2) var(--space-2);
+}
+
+.dialog-loading {
+  display: flex;
+  justify-content: center;
+  padding: var(--space-5);
+  color: var(--text-tertiary);
+}
+
+.dialog-album {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  text-align: left;
+  transition: background var(--duration-fast) var(--ease);
+}
+
+.dialog-album:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+
+.dialog-album:disabled {
+  opacity: 0.5;
+}
+
+.dialog-album-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  background: var(--surface-overlay);
+  color: var(--text-tertiary);
+}
+
+.dialog-album-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-sm);
+}
+
+.dialog-album-count {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.dialog-hint {
+  padding: var(--space-5) var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+  text-align: center;
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
