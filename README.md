@@ -114,7 +114,16 @@ npx eas build --profile preview --platform android
 ```
 
 **In the app:** enter your server address (`tower.local:2283` — the scheme is
-optional), sign in, then open **Backup** and turn on automatic backup.
+optional), sign in, then open **Library → Backup** and turn it on.
+
+Four tabs: **Photos, Search, Albums and Library**. Library is the hub — the
+people found in your photos, favourites, archive, trash, and the two things you
+configure once. Backup progress lives there rather than a screen deeper,
+because "is my phone actually backed up?" is the question this app exists to
+answer.
+
+Search falls back to filenames and camera details when the server has
+`ENABLE_ML=false`, so the tab is never simply dead.
 
 ### How reliable is background backup, honestly?
 

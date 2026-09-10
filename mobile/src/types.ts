@@ -95,3 +95,40 @@ export interface Album {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface Person {
+  id: string;
+  name: string | null;
+  coverFaceId: string | null;
+  faceCount: number;
+  assetCount: number;
+  isHidden: boolean;
+  createdAt: string;
+}
+
+export interface SearchHit {
+  asset: Asset;
+  /** Cosine similarity, 0..1. */
+  score: number;
+}
+
+export interface SearchStatus {
+  enabled: boolean;
+  model: string;
+  state: 'disabled' | 'loading' | 'ready' | 'error';
+  message: string;
+  total: number;
+  indexed: number;
+  pending: number;
+}
+
+export interface FaceStatus {
+  enabled: boolean;
+  state: 'disabled' | 'loading' | 'ready' | 'error';
+  message: string;
+  scanned: number;
+  total: number;
+  pending: number;
+  people: number;
+  faces: number;
+}

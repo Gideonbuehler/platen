@@ -21,6 +21,8 @@ function RootNavigator() {
   useEffect(() => {
     if (loading) return;
 
+    // `segments[0]` is 'login' on the sign-in screen and '(tabs)' inside the
+    // app, so a group never confuses the gate.
     const onLoginScreen = segments[0] === 'login';
     if (!user && !onLoginScreen) router.replace('/login');
     else if (user && onLoginScreen) router.replace('/');
@@ -53,10 +55,14 @@ function RootNavigator() {
           contentStyle: { backgroundColor: palette.surfaceBase },
         }}
       >
-        <Stack.Screen name="index" options={{ title: 'Photos' }} />
+        {/* The tab group brings its own headers. */}
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="login" options={{ headerShown: false }} />
         <Stack.Screen name="backup" options={{ title: 'Backup' }} />
         <Stack.Screen name="settings" options={{ title: 'Settings' }} />
+        <Stack.Screen name="album/[id]" />
+        <Stack.Screen name="person/[id]" />
+        <Stack.Screen name="collection/[kind]" />
         <Stack.Screen
           name="photo/[id]"
           options={{ title: '', headerTransparent: true, animation: 'fade' }}

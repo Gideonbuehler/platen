@@ -1,6 +1,18 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
-import type { Album, Asset, AuthResponse, AuthTokens, Page, ServerInfo, User } from '../types';
+import type {
+  Album,
+  Asset,
+  AuthResponse,
+  AuthTokens,
+  FaceStatus,
+  Page,
+  Person,
+  SearchHit,
+  SearchStatus,
+  ServerInfo,
+  User,
+} from '../types';
 
 /**
  * API client for the mobile app.
@@ -209,6 +221,7 @@ export async function mediaUrl(path: string): Promise<string> {
 }
 
 export const thumbnailUrl = (id: string) => mediaUrl(`/assets/${id}/thumbnail`);
+export const faceThumbnailUrl = (faceId: string) => mediaUrl(`/people/faces/${faceId}/thumbnail`);
 export const previewUrl = (id: string) => mediaUrl(`/assets/${id}/preview`);
 export const originalUrl = (id: string) => mediaUrl(`/assets/${id}/original`);
 
@@ -270,6 +283,38 @@ export const api = {
 
   albums: () => request<Album[]>('/albums'),
   albumAssets: (id: string) => request<Page<Asset>>(`/albums/${id}/assets`),
+
+  archived: (cursor?: string) =>
+    request<Page<Asset>>(
+      `/assets?archived=true&limit=60${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`,
+    ),
+
+  trashed: (cursor?: string) =>
+    request<Page<Asset>>(
+      `/assets?trashed=true&limit=60${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`,
+    ),
+
+  restoreAssets: (ids: string[]) =>
+    request<void>('/assets/restore', { method: 'POST', body: { ids }, raw: true }),
+
+  // --- search ---
+  searchStatus: () => request<SearchStatus>('/search/status'),
+  search: (query: string) => request<SearchHit[]>('/search', { method: 'POST', body: { query } }),
+  searchMetadata: (query: string) =>
+    request<Asset[]>(`/search/metadata?q=${encodeURIComponent(query)}`),
+
+  // --- people ---
+  faceStatus: () => request<FaceStatus>('/people/status'),
+  people: () => request<Person[]>('/people'),
+  person: (id: string) => request<Person>(`/people/${id}`),
+  personAssets: (id: string) => request<Page<Asset>>(`/people/${id}/assets`),
+  updatePerson: (id: string, body: { name?: string | null }) =>
+    request<Person>(`/people/${id}`, { method: 'PATCH', body }),
+
+  // --- albums ---
+  album: (id: string) => request<Album>(`/albums/${id}`),
+  createAlbum: (name: string, assetIds?: string[]) =>
+    request<Album>('/albums', { method: 'POST', body: { name, assetIds } }),
 
   /** Which of these checksums does the server already have? */
   checkUploads: (checksums: string[]) =>
