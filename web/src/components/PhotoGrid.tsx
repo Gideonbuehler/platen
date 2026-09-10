@@ -17,6 +17,8 @@ interface PhotoGridProps {
   loadingMore?: boolean;
   /** Public share pages build thumbnail URLs differently. */
   thumbnailUrl?: (asset: Asset) => string;
+  /** Fires with the YYYY-MM-DD of the section currently at the top. */
+  onVisibleDateChange?: (date: string) => void;
 }
 
 /** Rows rendered above and below the viewport, to hide scroll latency. */
@@ -38,6 +40,7 @@ export function PhotoGrid({
   onLoadMore,
   loadingMore,
   thumbnailUrl = (asset) => assetThumbnailUrl(asset.id, asset.updatedAt),
+  onVisibleDateChange,
 }: PhotoGridProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
@@ -108,6 +111,25 @@ export function PhotoGrid({
     const remaining = layout.totalHeight - (scrollTop + viewportHeight);
     if (remaining < 1200) onLoadMore();
   }, [scrollTop, viewportHeight, layout.totalHeight, onLoadMore, loadingMore]);
+
+  // --- report the section under the top of the viewport -------------------
+  // Drives the scrubber's position indicator. Reported only when it actually
+  // changes, so a scroll does not re-render the rail on every frame.
+  const lastReportedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!onVisibleDateChange || layout.sections.length === 0) return;
+
+    let current = layout.sections[0]!;
+    for (const section of layout.sections) {
+      if (section.headerTop <= scrollTop + 8) current = section;
+      else break;
+    }
+
+    if (lastReportedRef.current !== current.date) {
+      lastReportedRef.current = current.date;
+      onVisibleDateChange(current.date);
+    }
+  }, [scrollTop, layout.sections, onVisibleDateChange]);
 
   // --- selection ----------------------------------------------------------
   const toggle = useCallback(

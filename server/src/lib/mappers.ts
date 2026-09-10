@@ -22,6 +22,10 @@ export interface AssetRow {
   updated_at: Date;
   /** Internal only — never surfaced in the DTO. */
   storage_path: string;
+  /** Null for uploaded assets; set when the file lives in an external library. */
+  library_id: string | null;
+  /** Joined from external_libraries when the query includes it. */
+  library_root?: string | null;
 
   // Present only when the query LEFT JOINs asset_exif.
   make?: string | null;
@@ -51,7 +55,7 @@ export function assetColumns(prefix = ''): string {
     'id', 'owner_id', 'type', 'original_filename', 'mime_type', 'file_size',
     'width', 'height', 'duration_ms', 'taken_at', 'taken_at_offset',
     'is_favorite', 'is_archived', 'deleted_at', 'thumb_status', 'checksum',
-    'storage_path', 'created_at', 'updated_at',
+    'storage_path', 'library_id', 'created_at', 'updated_at',
   ]
     .map((c) => `${p}${c}`)
     .join(', ');

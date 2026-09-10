@@ -33,6 +33,8 @@ services:
       ENABLE_FACES: ${ENABLE_FACES:-false}
       FACE_MATCH_THRESHOLD: ${FACE_MATCH_THRESHOLD:-0.38}
       FACE_MIN_CLUSTER_SIZE: ${FACE_MIN_CLUSTER_SIZE:-2}
+      EXTERNAL_ROOT: /data/external
+      EXTERNAL_SCAN_INTERVAL_MINUTES: ${EXTERNAL_SCAN_INTERVAL_MINUTES:-360}
       ML_MODEL: ${ML_MODEL:-Xenova/clip-vit-base-patch32}
       TRASH_RETENTION_DAYS: ${TRASH_RETENTION_DAYS:-30}
       TZ: ${TZ:-UTC}
@@ -48,6 +50,10 @@ services:
       - ${UPLOAD_TMP_PATH:-./data/tmp}:/data/tmp
       # Downloaded CLIP weights (~250 MB), cached so restarts are instant.
       - ${ML_CACHE_PATH:-./data/ml-cache}:/data/ml-cache
+      # Existing photo folders to index in place. Read-only on purpose: Aperture
+      # never needs to write here, and the mount makes that guarantee at the
+      # kernel rather than trusting application code.
+      - ${EXTERNAL_PATH:-./data/external}:/data/external:ro
 
     depends_on:
       aperture-db:

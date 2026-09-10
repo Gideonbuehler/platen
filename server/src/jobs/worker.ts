@@ -4,6 +4,7 @@ import type { FastifyBaseLogger } from 'fastify';
 import { config } from '../config.js';
 import { runJob } from './handlers.js';
 import { claim, complete, enqueue, fail, requeueStale } from './queue.js';
+import { scheduleDueScans } from '../services/scanner.js';
 
 const WORKER_ID = `${hostname()}:${process.pid}:${randomUUID().slice(0, 8)}`;
 
@@ -13,6 +14,9 @@ const STALE_SWEEP_MS = 5 * 60 * 1000;
 // Hourly is plenty: the purge only acts on assets already past the retention
 // window, so the exact moment it runs never matters.
 const PURGE_INTERVAL_MS = 60 * 60 * 1000;
+// How often we look for libraries due a rescan; the per-library interval is
+// what actually governs frequency.
+const SCAN_CHECK_MS = 10 * 60 * 1000;
 
 /**
  * A single in-process worker loop.
@@ -105,6 +109,16 @@ export function startWorker(log: FastifyBaseLogger): () => Promise<void> {
   armPurge();
   const purgeSchedule = setInterval(armPurge, PURGE_INTERVAL_MS);
 
+  // External libraries are re-scanned on their own cadence. Dedupe keys mean a
+  // library already queued or mid-scan is never queued twice.
+  const armScans = () =>
+    void scheduleDueScans().catch((err) =>
+      log.error({ err }, 'could not schedule external library scans'),
+    );
+
+  armScans();
+  const scanSchedule = setInterval(armScans, SCAN_CHECK_MS);
+
   log.info(`Job worker ${WORKER_ID} started (concurrency ${config.JOB_CONCURRENCY}).`);
   loopDone = loop();
 
@@ -112,6 +126,7 @@ export function startWorker(log: FastifyBaseLogger): () => Promise<void> {
     running = false;
     clearInterval(staleSweep);
     clearInterval(purgeSchedule);
+    clearInterval(scanSchedule);
     await loopDone;
     log.info('Job worker stopped.');
   };

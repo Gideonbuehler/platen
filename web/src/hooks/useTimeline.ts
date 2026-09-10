@@ -18,15 +18,26 @@ const FILTERS: Record<TimelineVariant, Record<string, boolean>> = {
  * Favourite and delete both update the cache optimistically: on a LAN the round
  * trip is quick, but a heart that waits for the server still feels broken.
  */
-export function useTimeline(variant: TimelineVariant) {
+export function useTimeline(variant: TimelineVariant, from?: string) {
   const queryClient = useQueryClient();
   const filters = FILTERS[variant];
-  const queryKey = useMemo(() => ['assets', variant] as const, [variant]);
+
+  // `from` is part of the key so jumping to a date starts a fresh list rather
+  // than appending to whatever was already loaded.
+  const queryKey = useMemo(() => ['assets', variant, from ?? 'top'] as const, [variant, from]);
 
   const query = useInfiniteQuery({
     queryKey,
     initialPageParam: undefined as string | undefined,
-    queryFn: ({ pageParam }) => api.timeline({ ...filters, cursor: pageParam, limit: 120 }),
+    queryFn: ({ pageParam }) =>
+      api.timeline({
+        ...filters,
+        cursor: pageParam,
+        // Only the first page is anchored to the jump date; after that the
+        // cursor carries the position and `from` would fight it.
+        from: pageParam ? undefined : from,
+        limit: 120,
+      }),
     getNextPageParam: (lastPage: Page<Asset>) => lastPage.nextCursor ?? undefined,
   });
 

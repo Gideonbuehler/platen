@@ -286,3 +286,42 @@
   color: var(--text-secondary);
   line-height: 1.6;
 }
+
+/* ---------------------------------------------------------------------------
+ * Zoom & pan
+ * ------------------------------------------------------------------------ */
+
+.lightbox-media.is-zoomed {
+  cursor: grab;
+  /* Contain the magnified image rather than letting it spill over the chrome. */
+  overflow: hidden;
+}
+
+.lightbox-media.is-panning {
+  cursor: grabbing;
+}
+
+.lightbox-media.is-zoomed img {
+  /* Sharp pixels when inspecting focus — the browser's smoothing at high zoom
+     hides exactly the detail someone is zooming in to judge. */
+  image-rendering: -webkit-optimize-contrast;
+  box-shadow: none;
+  border-radius: 0;
+}
+
+/* The stage swallows wheel events so the page behind cannot scroll. */
+.lightbox-media {
+  touch-action: none;
+}
+
+/* Matches the rendered image box so normalised face coordinates line up.
+   `pointer-events: none` keeps it from stealing the zoom gestures. */
+.lightbox-face-layer {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 2;
+}

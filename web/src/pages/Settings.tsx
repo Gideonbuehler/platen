@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { IconSpinner, IconTrash, IconUsers } from '../components/Icons';
+import { IconAlbums, IconPlus, IconSpinner, IconTrash, IconUsers } from '../components/Icons';
 import { useAuth } from '../hooks/useAuth';
 import { useTheme } from '../hooks/useTheme';
 import { api } from '../lib/api';
@@ -25,6 +25,8 @@ export function SettingsPage() {
   const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
 
   const [newUser, setNewUser] = useState({ email: '', name: '', password: '' });
+  const [newLibrary, setNewLibrary] = useState({ name: '', path: '' });
+  const [browsePath, setBrowsePath] = useState('');
 
   const { data: stats } = useQuery({ queryKey: ['stats'], queryFn: api.stats });
   const { data: searchStatus } = useQuery({
@@ -94,6 +96,53 @@ export function SettingsPage() {
   const deleteUser = useMutation({
     mutationFn: (id: string) => api.deleteUser(id),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['users'] }),
+  });
+
+  const { data: libraries } = useQuery({
+    queryKey: ['libraries'],
+    queryFn: api.libraries,
+    enabled: user?.isAdmin ?? false,
+    // Follow a scan in progress without needing a manual refresh.
+    refetchInterval: (query) =>
+      (query.state.data ?? []).some((lib) => lib.lastScanAt === null) ? 5_000 : 30_000,
+  });
+
+  const { data: browse } = useQuery({
+    queryKey: ['library-browse', browsePath],
+    queryFn: () => api.browseLibraries(browsePath),
+    enabled: user?.isAdmin ?? false,
+  });
+
+  const createLibrary = useMutation({
+    mutationFn: () => api.createLibrary(newLibrary),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['libraries'] });
+      setNewLibrary({ name: '', path: '' });
+      setMessage({ kind: 'ok', text: 'Library added. Scanning has started.' });
+    },
+    onError: (error: unknown) => {
+      setMessage({
+        kind: 'error',
+        text: error instanceof Error ? error.message : 'Could not add the library.',
+      });
+    },
+  });
+
+  const scanLibrary = useMutation({
+    mutationFn: (id: string) => api.scanLibrary(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['libraries'] });
+      setMessage({ kind: 'ok', text: 'Scan queued.' });
+    },
+  });
+
+  const removeLibrary = useMutation({
+    mutationFn: (id: string) => api.deleteLibrary(id),
+    onSuccess: (result) => {
+      void queryClient.invalidateQueries({ queryKey: ['libraries'] });
+      void queryClient.invalidateQueries({ queryKey: ['assets'] });
+      setMessage({ kind: 'ok', text: result.message });
+    },
   });
 
   const rescanFaces = useMutation({
@@ -369,6 +418,150 @@ export function SettingsPage() {
           <p className="settings-hint">Checking…</p>
         )}
       </section>
+
+      {/* ---- External libraries -------------------------------------------- */}
+      {user?.isAdmin && (
+        <section className="settings-section card">
+          <h2>
+            <IconAlbums size={17} />
+            Existing folders
+          </h2>
+          <p className="settings-hint">
+            Index photos already on this server, in place. Nothing is copied, moved or renamed,
+            and removing a library here never deletes a file.
+          </p>
+
+          {libraries && libraries.length > 0 && (
+            <ul className="settings-libraries">
+              {libraries.map((library) => (
+                <li key={library.id}>
+                  <div className="settings-library-main">
+                    <span className="settings-library-name">{library.name}</span>
+                    <span className="settings-library-path">/{library.path}</span>
+                    <span className="settings-library-stats">
+                      {library.assetCount.toLocaleString()} photos
+                      {library.missingCount > 0 && (
+                        <span className="settings-failed">
+                          {' · '}
+                          {library.missingCount.toLocaleString()} missing
+                        </span>
+                      )}
+                      {library.lastScanAt
+                        ? ` · scanned ${new Date(library.lastScanAt).toLocaleString()}`
+                        : ' · not scanned yet'}
+                    </span>
+                    {library.lastScanError && (
+                      <span className="settings-library-error">{library.lastScanError}</span>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => scanLibrary.mutate(library.id)}
+                  >
+                    Rescan
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-icon btn-danger"
+                    aria-label={`Remove ${library.name}`}
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          `Stop indexing "${library.name}"? Your files stay exactly where they are — this only removes them from Aperture.`,
+                        )
+                      ) {
+                        removeLibrary.mutate(library.id);
+                      }
+                    }}
+                  >
+                    <IconTrash size={16} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <div className="settings-library-add">
+            <input
+              className="input"
+              placeholder="Name, e.g. Old photos"
+              value={newLibrary.name}
+              onChange={(event) => setNewLibrary({ ...newLibrary, name: event.target.value })}
+            />
+            <input
+              className="input"
+              placeholder="Folder inside the mounted directory"
+              value={newLibrary.path}
+              onChange={(event) => setNewLibrary({ ...newLibrary, path: event.target.value })}
+            />
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={
+                !newLibrary.name.trim() || !newLibrary.path.trim() || createLibrary.isPending
+              }
+              onClick={() => createLibrary.mutate()}
+            >
+              <IconPlus size={16} />
+              Add
+            </button>
+          </div>
+
+          {/* Picking beats typing: the path is the one inside the container,
+              which is not the path anyone knows from their NAS. */}
+          {browse && (
+            <div className="settings-browse">
+              <div className="settings-browse-path">
+                <button type="button" onClick={() => setBrowsePath('')} disabled={!browsePath}>
+                  {browse.root}
+                </button>
+                {browsePath && <span>/{browsePath}</span>}
+              </div>
+
+              {!browse.exists ? (
+                <p className="settings-hint" style={{ marginBottom: 0 }}>
+                  Nothing is mounted at <code>{browse.root}</code> yet. Point{' '}
+                  <code>EXTERNAL_PATH</code> at the share you want to index, then restart.
+                </p>
+              ) : browse.directories.length === 0 ? (
+                <p className="settings-hint" style={{ marginBottom: 0 }}>
+                  No sub-folders here.
+                </p>
+              ) : (
+                <div className="settings-browse-list">
+                  {browse.directories.map((dir) => (
+                    <button
+                      key={dir}
+                      type="button"
+                      className="settings-browse-item"
+                      onClick={() => setBrowsePath(dir)}
+                    >
+                      {dir.split('/').pop()}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {browsePath && (
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() =>
+                    setNewLibrary({
+                      name: newLibrary.name || (browsePath.split('/').pop() ?? browsePath),
+                      path: browsePath,
+                    })
+                  }
+                >
+                  Use this folder
+                </button>
+              )}
+            </div>
+          )}
+        </section>
+      )}
 
       {/* ---- Admin -------------------------------------------------------- */}
       {user?.isAdmin && (

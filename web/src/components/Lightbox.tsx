@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Asset } from '@aperture/shared';
 import { assetDownloadUrl, assetOriginalUrl, assetPreviewUrl } from '../lib/api';
 import { captureWallClock, formatCaptureTime } from '../lib/justified';
+import { useZoomPan } from '../hooks/useZoomPan';
+import { FaceOverlay, FacesPanel } from './FacesPanel';
 import {
   IconChevronLeft,
   IconChevronRight,
@@ -11,6 +13,7 @@ import {
   IconInfo,
   IconSpinner,
   IconTrash,
+  IconUsers,
 } from './Icons';
 import './Lightbox.css';
 
@@ -58,8 +61,32 @@ export function Lightbox({
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
   const imageRef = useRef<HTMLImageElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
+
+  const zoom = useZoomPan(stageRef);
+
+  const [wantOriginal, setWantOriginal] = useState(false);
+  const [showFaces, setShowFaces] = useState(false);
 
   const asset = assets[index];
+
+  /**
+   * Formats a browser can actually paint.
+   *
+   * Swapping in the original at high zoom only helps when the browser can
+   * decode it. Camera RAW and HEIC cannot be rendered by any browser, so for
+   * those the 1600px preview already is the highest resolution available and
+   * requesting the original just yields a broken image.
+   */
+  const originalIsDisplayable = /^image\/(jpeg|png|webp|gif|avif|bmp)$/.test(asset?.mimeType ?? '');
+
+  // Past roughly 1.5x the preview has no more detail to give, so the
+  // full-resolution original is swapped in. Loading it up front would mean
+  // pulling a 60 MP file every time someone glances at a photo.
+  useEffect(() => {
+    if (zoom.state.scale >= 1.5 && originalIsDisplayable) setWantOriginal(true);
+  }, [zoom.state.scale, originalIsDisplayable]);
+
 
   // The neighbour prefetch below means the next preview is usually already in
   // cache, so its load event fires before React can attach a handler. Check
@@ -79,9 +106,11 @@ export function Lightbox({
       if (next < 0 || next >= assets.length) return;
       setLoaded(false);
       setFailed(false);
+      zoom.reset();
+      setWantOriginal(false);
       onIndexChange(next);
     },
-    [assets.length, onIndexChange],
+    [assets.length, onIndexChange, zoom],
   );
 
   // --- keyboard -----------------------------------------------------------
@@ -89,13 +118,20 @@ export function Lightbox({
     const onKeyDown = (event: KeyboardEvent) => {
       switch (event.key) {
         case 'Escape':
-          onClose();
+          // Back out of zoom first; closing from a zoomed-in state loses the
+          // position with no way to get it back.
+          if (zoom.isZoomed) zoom.reset();
+          else onClose();
           break;
         case 'ArrowLeft':
-          goTo(index - 1);
+          // While zoomed the arrows pan rather than change photo.
+          if (!zoom.isZoomed) goTo(index - 1);
           break;
         case 'ArrowRight':
-          goTo(index + 1);
+          if (!zoom.isZoomed) goTo(index + 1);
+          break;
+        case '0':
+          zoom.reset();
           break;
         case 'i':
           setShowInfo((v) => !v);
@@ -110,7 +146,7 @@ export function Lightbox({
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [index, goTo, onClose, asset, onToggleFavorite]);
+  }, [index, goTo, onClose, asset, onToggleFavorite, zoom]);
 
   // Lock the page behind the overlay, and restore the exact scroll position on
   // close — otherwise closing a lightbox halfway down a long timeline throws
@@ -121,6 +157,47 @@ export function Lightbox({
     return () => {
       document.body.style.overflow = overflow;
     };
+  }, []);
+
+  /**
+   * Move focus into the overlay, and put it back where it was on close.
+   *
+   * Without this, focus stays on the grid tile underneath: Tab walks through
+   * the hidden timeline instead of the viewer's own controls, a screen reader
+   * keeps reading the page behind, and keystrokes land on whatever the browser
+   * still considers focused.
+   */
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    dialogRef.current?.focus();
+
+    return () => {
+      // Only restore if the element is still in the document — the photo it
+      // belonged to may have just been deleted.
+      if (previouslyFocused?.isConnected) previouslyFocused.focus();
+    };
+  }, []);
+
+  /** Keeps Tab inside the dialog while it is open. */
+  const onTabKey = useCallback((event: React.KeyboardEvent) => {
+    if (event.key !== 'Tab') return;
+
+    const focusable = dialogRef.current?.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), a[href], input, [tabindex]:not([tabindex="-1"])',
+    );
+    if (!focusable || focusable.length === 0) return;
+
+    const first = focusable[0]!;
+    const last = focusable[focusable.length - 1]!;
+
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
   }, []);
 
   // Warm the neighbours so arrowing through feels instant.
@@ -146,7 +223,15 @@ export function Lightbox({
   });
 
   return (
-    <div className="lightbox" role="dialog" aria-modal="true" aria-label={asset.originalFilename}>
+    <div
+      ref={dialogRef}
+      className="lightbox"
+      role="dialog"
+      aria-modal="true"
+      aria-label={asset.originalFilename}
+      tabIndex={-1}
+      onKeyDown={onTabKey}
+    >
       <div className="lightbox-backdrop" onClick={onClose} />
 
       <header className="lightbox-header">
@@ -158,6 +243,7 @@ export function Lightbox({
           <span className="lightbox-filename">{asset.originalFilename}</span>
           <span className="lightbox-position">
             {index + 1} of {assets.length}
+            {zoom.isZoomed && ` · ${Math.round(zoom.state.scale * 100)}%`}
           </span>
         </div>
 
@@ -170,6 +256,17 @@ export function Lightbox({
               aria-label={asset.isFavorite ? 'Remove from favourites' : 'Add to favourites'}
             >
               <IconHeart size={20} filled={asset.isFavorite} />
+            </button>
+          )}
+
+          {!readOnly && (
+            <button
+              type="button"
+              className={`btn btn-icon lightbox-btn${showFaces ? ' is-active' : ''}`}
+              onClick={() => setShowFaces((v) => !v)}
+              aria-label="Show faces"
+            >
+              <IconUsers size={20} />
             </button>
           )}
 
@@ -207,7 +304,7 @@ export function Lightbox({
       </header>
 
       <div className="lightbox-stage">
-        {index > 0 && (
+        {index > 0 && !zoom.isZoomed && (
           <button
             type="button"
             className="lightbox-nav lightbox-nav-prev"
@@ -218,7 +315,13 @@ export function Lightbox({
           </button>
         )}
 
-        <div className="lightbox-media">
+        <div
+          ref={stageRef}
+          className={`lightbox-media${zoom.isZoomed ? ' is-zoomed' : ''}${zoom.panning ? ' is-panning' : ''}`}
+          onWheel={zoom.handlers.onWheel}
+          onPointerDown={zoom.handlers.onPointerDown}
+          onDoubleClick={zoom.handlers.onDoubleClick}
+        >
           {asset.type === 'video' ? (
             <video
               key={asset.id}
@@ -257,22 +360,42 @@ export function Lightbox({
                   )}
                 </div>
               ) : (
-                <img
-                  key={asset.id}
-                  ref={imageRef}
-                  src={previewUrl(asset)}
-                  alt={asset.originalFilename}
-                  className={loaded ? 'is-loaded' : ''}
-                  onLoad={() => setLoaded(true)}
-                  onError={() => setFailed(true)}
-                  draggable={false}
-                />
+                <>
+                  {showFaces && !zoom.isZoomed && (
+                    <div className="lightbox-face-layer">
+                      <FaceOverlay assetId={asset.id} visible={showFaces} />
+                    </div>
+                  )}
+                  <img
+                    key={asset.id}
+                    ref={imageRef}
+                    src={wantOriginal ? originalUrl(asset) : previewUrl(asset)}
+                    alt={asset.originalFilename}
+                    className={loaded ? 'is-loaded' : ''}
+                    onLoad={() => setLoaded(true)}
+                    onError={() => {
+                      // Falling back rather than failing: the preview is known
+                      // good, and only the higher-resolution swap went wrong.
+                      if (wantOriginal) setWantOriginal(false);
+                      else setFailed(true);
+                    }}
+                    draggable={false}
+                    style={{
+                      transform: `translate3d(${zoom.state.x}px, ${zoom.state.y}px, 0) scale(${zoom.state.scale})`,
+                      // Transition only when settling back, never while dragging,
+                      // or panning lags a frame behind the pointer.
+                      transition: zoom.panning
+                        ? 'none'
+                        : 'transform var(--duration-base) var(--ease)',
+                    }}
+                  />
+                </>
               )}
             </>
           )}
         </div>
 
-        {index < assets.length - 1 && (
+        {index < assets.length - 1 && !zoom.isZoomed && (
           <button
             type="button"
             className="lightbox-nav lightbox-nav-next"
@@ -289,6 +412,8 @@ export function Lightbox({
           <h3>Details</h3>
 
           <dl>
+            {!readOnly && <FacesPanel assetId={asset.id} />}
+
             <div>
               <dt>Taken</dt>
               <dd>

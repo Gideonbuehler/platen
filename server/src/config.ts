@@ -68,6 +68,18 @@ const schema = z.object({
   /** Faces smaller than this (pixels on the preview) are ignored as background. */
   FACE_MIN_SIZE_PX: z.coerce.number().int().min(10).default(40),
 
+  /**
+   * Root that every external library must sit under.
+   *
+   * External libraries are admin-configured absolute paths, so without a fixed
+   * root a typo — or a malicious admin — could index /etc. Mount the shares you
+   * want to expose beneath this single path and nothing else is reachable.
+   */
+  EXTERNAL_ROOT: z.string().default('/data/external'),
+
+  /** How often an enabled external library is re-scanned, in minutes. */
+  EXTERNAL_SCAN_INTERVAL_MINUTES: z.coerce.number().int().min(5).default(360),
+
   /** Days a trashed asset survives before the purge job deletes the bytes. */
   TRASH_RETENTION_DAYS: z.coerce.number().int().min(1).default(30),
 

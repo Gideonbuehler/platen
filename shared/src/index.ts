@@ -225,6 +225,20 @@ export interface SearchHit {
   score: number;
 }
 
+export interface ExternalLibrary {
+  id: string;
+  name: string;
+  /** Path relative to the server's EXTERNAL_ROOT. */
+  path: string;
+  exclusions: string[];
+  isEnabled: boolean;
+  assetCount: number;
+  missingCount: number;
+  lastScanAt: IsoDate | null;
+  lastScanError: string | null;
+  createdAt: IsoDate;
+}
+
 export interface Person {
   id: string;
   name: string | null;
@@ -272,6 +286,7 @@ export type JobType =
   | 'video-poster'
   | 'embedding'
   | 'face-detect'
+  | 'library-scan'
   | 'trash-purge';
 
 export interface JobStats {

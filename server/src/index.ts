@@ -21,6 +21,7 @@ import { publicShareRoutes, shareAdminRoutes } from './routes/share.js';
 import { searchRoutes } from './routes/search.js';
 import { serverRoutes } from './routes/server.js';
 import { peopleRoutes } from './routes/people.js';
+import { libraryRoutes } from './routes/libraries.js';
 import { hasFfmpeg } from './services/media.js';
 import { warmUp } from './services/ml.js';
 import { warmUpFaces } from './services/faces.js';
@@ -121,6 +122,7 @@ async function build(): Promise<void> {
   await app.register(shareAdminRoutes, { prefix: '/api/shares' });
   await app.register(searchRoutes, { prefix: '/api/search' });
   await app.register(peopleRoutes, { prefix: '/api/people' });
+  await app.register(libraryRoutes, { prefix: '/api/libraries' });
   await app.register(publicShareRoutes, { prefix: '/api/public' });
 
   // -------------------------------------------------------------------------

@@ -7,6 +7,8 @@ import {
   deleteAssetFiles,
   fileExists,
   libraryPath,
+  externalRootPath,
+  originalPathFor,
   relocateOriginal,
   thumbDir,
   thumbsPath,
@@ -20,6 +22,7 @@ import {
 import { embedImage, getMlStatus, toVectorLiteral } from '../services/ml.js';
 import { detectFaces, getFaceStatus, writeFaceCrop } from '../services/faces.js';
 import { assignFaceToPerson, pruneEmptyPeople, refreshCoverFaces } from '../services/clustering.js';
+import { scanLibrary } from '../services/scanner.js';
 import { enqueue } from './queue.js';
 
 interface AssetRow {
@@ -30,12 +33,31 @@ interface AssetRow {
   original_filename: string;
   duration_ms: number | null;
   taken_at: Date;
+  library_id: string | null;
+  /** Root of the external library, joined in; null for uploaded assets. */
+  library_root: string | null;
+}
+
+
+/**
+ * Absolute path of an asset's original.
+ *
+ * External library roots are stored relative to EXTERNAL_ROOT, so the two
+ * cases differ only in which root the relative path hangs off.
+ */
+function resolveOriginal(asset: AssetRow): string {
+  return asset.library_root
+    ? originalPathFor(asset.storage_path, externalRootPath(asset.library_root))
+    : libraryPath(asset.storage_path);
 }
 
 async function loadAsset(assetId: string): Promise<AssetRow | null> {
   const rows = await sql<AssetRow[]>`
-    SELECT id, owner_id, type, storage_path, original_filename, duration_ms, taken_at
-    FROM assets WHERE id = ${assetId}
+    SELECT a.id, a.owner_id, a.type, a.storage_path, a.original_filename,
+           a.duration_ms, a.taken_at, a.library_id, l.path AS library_root
+    FROM assets a
+    LEFT JOIN external_libraries l ON l.id = a.library_id
+    WHERE a.id = ${assetId}
   `;
   return rows[0] ?? null;
 }
@@ -52,7 +74,7 @@ async function handleMetadata(assetId: string): Promise<void> {
   const asset = await loadAsset(assetId);
   if (!asset) return; // deleted while queued
 
-  const absolute = libraryPath(asset.storage_path);
+  const absolute = resolveOriginal(asset);
   if (!(await fileExists(absolute))) {
     throw new Error(`Original missing on disk: ${asset.storage_path}`);
   }
@@ -110,6 +132,11 @@ async function handleMetadata(assetId: string): Promise<void> {
 async function refileByCaptureDate(asset: AssetRow, exifTakenAt: Date | null): Promise<void> {
   if (!exifTakenAt) return;
 
+  // External files belong to the user, not to us. Tidying them into YYYY/MM
+  // folders would be reorganising someone's own directory tree behind their
+  // back — the single most alarming thing an indexer could do.
+  if (asset.library_id) return;
+
   const desiredPath = buildStoragePath(
     asset.owner_id,
     asset.id,
@@ -135,7 +162,7 @@ async function handleThumbnail(assetId: string): Promise<void> {
   const asset = await loadAsset(assetId);
   if (!asset) return;
 
-  const absolute = libraryPath(asset.storage_path);
+  const absolute = resolveOriginal(asset);
   const outDir = thumbsPath(thumbDir(asset.owner_id, asset.id));
 
   try {
@@ -214,15 +241,18 @@ async function handleEmbedding(assetId: string): Promise<void> {
  * (invisible, and it accumulates).
  */
 async function handleTrashPurge(): Promise<void> {
-  const expired = await sql<{ id: string; owner_id: string; storage_path: string }[]>`
-    SELECT id, owner_id, storage_path FROM assets
+  const expired = await sql<
+    { id: string; owner_id: string; storage_path: string; library_id: string | null }[]
+  >`
+    SELECT id, owner_id, storage_path, library_id FROM assets
     WHERE deleted_at IS NOT NULL
       AND deleted_at < now() - ${`${config.TRASH_RETENTION_DAYS} days`}::interval
     LIMIT 500
   `;
 
   for (const row of expired) {
-    await deleteAssetFiles(row.owner_id, row.id, row.storage_path);
+    // An external original is the user's own file; purging only forgets it.
+    await deleteAssetFiles(row.owner_id, row.id, row.storage_path, row.library_id !== null);
     await sql`DELETE FROM assets WHERE id = ${row.id}`;
   }
 
@@ -340,6 +370,12 @@ export async function runJob(type: JobType, payload: Record<string, unknown>): P
     case 'embedding':
       if (!assetId) throw new Error('embedding job requires assetId');
       return handleEmbedding(assetId);
+    case 'library-scan': {
+      const libraryId = typeof payload.libraryId === 'string' ? payload.libraryId : null;
+      if (!libraryId) throw new Error('library-scan job requires libraryId');
+      await scanLibrary(libraryId);
+      return;
+    }
     case 'trash-purge':
       return handleTrashPurge();
     case 'face-detect':

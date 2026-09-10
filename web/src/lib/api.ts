@@ -2,6 +2,7 @@ import type {
   Album,
   ApiError,
   Asset,
+  ExternalLibrary,
   Face,
   FaceStatus,
   Person,
@@ -446,6 +447,21 @@ export const api = {
       `/public/${key}`,
       { anonymous: true, headers: password ? { 'X-Share-Password': password } : undefined },
     ),
+
+  // --- external libraries ---
+  libraries: () => request<ExternalLibrary[]>('/libraries'),
+  browseLibraries: (path = '') =>
+    request<{ root: string; path: string; exists: boolean; directories: string[] }>(
+      `/libraries/browse?path=${encodeURIComponent(path)}`,
+    ),
+  createLibrary: (body: { name: string; path: string }) =>
+    request<{ id: string; queued: boolean }>('/libraries', { method: 'POST', body }),
+  updateLibrary: (id: string, body: { name?: string; isEnabled?: boolean }) =>
+    request<{ updated: boolean }>(`/libraries/${id}`, { method: 'PATCH', body }),
+  scanLibrary: (id: string) =>
+    request<{ queued: boolean }>(`/libraries/${id}/scan`, { method: 'POST' }),
+  deleteLibrary: (id: string) =>
+    request<{ removed: number; message: string }>(`/libraries/${id}`, { method: 'DELETE' }),
 
   // --- people ---
   faceStatus: () => request<FaceStatus>('/people/status'),

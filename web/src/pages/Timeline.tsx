@@ -6,6 +6,7 @@ import { IconArchive, IconHeart, IconPhotos, IconSpinner, IconTrash } from '../c
 import { Lightbox } from '../components/Lightbox';
 import { PhotoGrid } from '../components/PhotoGrid';
 import { SelectionBar } from '../components/SelectionBar';
+import { TimelineScrubber } from '../components/TimelineScrubber';
 import { api } from '../lib/api';
 import { useTimeline, type TimelineVariant } from '../hooks/useTimeline';
 import './Timeline.css';
@@ -41,6 +42,11 @@ const COPY: Record<
 };
 
 export function TimelinePage({ variant }: { variant: TimelineVariant }) {
+  // Set by the scrubber. Changing it restarts the list at that date rather
+  // than making the user scroll everything in between.
+  const [jumpFrom, setJumpFrom] = useState<string | undefined>(undefined);
+  const [visibleDate, setVisibleDate] = useState<string | null>(null);
+
   const {
     assets,
     isLoading,
@@ -53,7 +59,7 @@ export function TimelinePage({ variant }: { variant: TimelineVariant }) {
     deleteAssets,
     restoreAssets,
     archiveAssets,
-  } = useTimeline(variant);
+  } = useTimeline(variant, jumpFrom);
 
   const [selection, setSelection] = useState<Set<string>>(new Set());
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
@@ -131,6 +137,7 @@ export function TimelinePage({ variant }: { variant: TimelineVariant }) {
         onSelectionChange={setSelection}
         onLoadMore={loadMore}
         loadingMore={isFetchingNextPage}
+        onVisibleDateChange={setVisibleDate}
         empty={
           <div className="timeline-empty">
             <copy.icon size={40} />
@@ -144,6 +151,19 @@ export function TimelinePage({ variant }: { variant: TimelineVariant }) {
         <div className="timeline-more">
           <IconSpinner size={20} />
         </div>
+      )}
+
+      {buckets && buckets.length > 1 && (
+        <TimelineScrubber
+          buckets={buckets}
+          activeDate={visibleDate}
+          onJump={(date) => {
+            // Buckets are local dates; the API wants an instant. End-of-day
+            // UTC covers every photo taken on that date whatever its offset.
+            setJumpFrom(`${date}T23:59:59.999Z`);
+            window.scrollTo({ top: 0 });
+          }}
+        />
       )}
 
       <SelectionBar

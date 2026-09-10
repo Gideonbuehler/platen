@@ -8,7 +8,7 @@ import type { ShareLink } from '@aperture/shared';
 import { sql } from '../db/index.js';
 import { badRequest, forbidden, notFound, unauthorized } from '../lib/errors.js';
 import { assetColumnsWithExif, toAssetDto, type AssetRow } from '../lib/mappers.js';
-import { libraryPath, thumbDir, thumbsPath } from '../lib/storage.js';
+import { externalRootPath, libraryPath, originalPathFor, thumbDir, thumbsPath } from '../lib/storage.js';
 import { auth, requireAuth } from '../middleware/auth.js';
 import { hashPassword, verifyPassword } from '../services/auth.js';
 
@@ -73,17 +73,19 @@ async function resolveShare(key: string, password?: string): Promise<ShareRow> {
 async function shareAssets(share: ShareRow): Promise<AssetRow[]> {
   if (share.asset_id) {
     return sql<AssetRow[]>`
-      SELECT ${sql.unsafe(assetColumnsWithExif())}
+      SELECT ${sql.unsafe(assetColumnsWithExif())}, l.path AS library_root
       FROM assets a
       LEFT JOIN asset_exif e ON e.asset_id = a.id
+      LEFT JOIN external_libraries l ON l.id = a.library_id
       WHERE a.id = ${share.asset_id} AND a.deleted_at IS NULL
     `;
   }
   return sql<AssetRow[]>`
-    SELECT ${sql.unsafe(assetColumnsWithExif())}
+    SELECT ${sql.unsafe(assetColumnsWithExif())}, l.path AS library_root
     FROM album_assets aa
     JOIN assets a ON a.id = aa.asset_id
     LEFT JOIN asset_exif e ON e.asset_id = a.id
+    LEFT JOIN external_libraries l ON l.id = a.library_id
     WHERE aa.album_id = ${share.album_id} AND a.deleted_at IS NULL
     ORDER BY a.taken_at DESC, a.id DESC
   `;
@@ -292,6 +294,9 @@ export async function publicShareRoutes(app: FastifyInstance): Promise<void> {
       'Content-Disposition',
       `attachment; filename="${asset.original_filename.replace(/["\\]/g, '')}"`,
     );
-    return streamPublic(reply, libraryPath(asset.storage_path), asset.mime_type, request.headers.range);
+    const absolute = asset.library_root
+      ? originalPathFor(asset.storage_path, externalRootPath(asset.library_root))
+      : libraryPath(asset.storage_path);
+    return streamPublic(reply, absolute, asset.mime_type, request.headers.range);
   });
 }

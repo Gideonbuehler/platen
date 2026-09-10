@@ -11,8 +11,10 @@ import {
   buildStoragePath,
   commitUpload,
   discardUpload,
+  externalRootPath,
   fileExists,
   libraryPath,
+  originalPathFor,
   stageUpload,
   thumbDir,
   thumbsPath,
@@ -84,6 +86,14 @@ const filterSchema = z.object({
   archived: z.coerce.boolean().optional(),
   trashed: z.coerce.boolean().optional(),
   cursor: z.string().optional(),
+  /**
+   * Start the page at this instant instead of at the newest asset.
+   *
+   * Cursor paging alone can only walk backwards from the top, so reaching 2019
+   * in a large library would mean loading every photo since. The scrubber needs
+   * to land directly on a date.
+   */
+  from: z.string().datetime().optional(),
   limit: z.coerce.number().int().min(1).max(500).default(120),
 });
 
@@ -171,9 +181,10 @@ async function sendFile(
 
 async function loadOwnedAsset(assetId: string, userId: string): Promise<AssetRow> {
   const rows = await sql<AssetRow[]>`
-    SELECT ${sql.unsafe(assetColumnsWithExif())}
+    SELECT ${sql.unsafe(assetColumnsWithExif())}, l.path AS library_root
     FROM assets a
     LEFT JOIN asset_exif e ON e.asset_id = a.id
+    LEFT JOIN external_libraries l ON l.id = a.library_id
     WHERE a.id = ${assetId}
   `;
   const row = rows[0];
@@ -375,6 +386,11 @@ export async function assetRoutes(app: FastifyInstance): Promise<void> {
       // Keyset pagination on (taken_at, id) — stable even while new photos
       // arrive mid-scroll, unlike OFFSET.
       where = sql`${where} AND (a.taken_at, a.id) < (${cursor.takenAt}, ${cursor.id})`;
+    } else if (filters.from) {
+      // A jump: begin at the first asset at or before this instant. The same
+      // index serves it, so landing on an arbitrary date costs no more than
+      // loading the top of the timeline.
+      where = sql`${where} AND a.taken_at <= ${new Date(filters.from)}`;
     }
 
     const rows = await sql<AssetRow[]>`
@@ -424,7 +440,11 @@ export async function assetRoutes(app: FastifyInstance): Promise<void> {
     const query = z.object({ download: z.coerce.boolean().optional() }).parse(request.query);
     const row = await loadOwnedAsset(id, userId);
 
-    return sendFile(reply, libraryPath(row.storage_path), row.mime_type, {
+    const absolute = row.library_root
+      ? originalPathFor(row.storage_path, externalRootPath(row.library_root))
+      : libraryPath(row.storage_path);
+
+    return sendFile(reply, absolute, row.mime_type, {
       rangeHeader: request.headers.range,
       downloadName: query.download ? row.original_filename : undefined,
       immutable: true,
@@ -463,13 +483,17 @@ export async function assetRoutes(app: FastifyInstance): Promise<void> {
       .parse(request.body);
 
     if (permanent) {
-      const rows = await sql<{ id: string; owner_id: string; storage_path: string }[]>`
-        SELECT id, owner_id, storage_path FROM assets
+      const rows = await sql<
+        { id: string; owner_id: string; storage_path: string; library_id: string | null }[]
+      >`
+        SELECT id, owner_id, storage_path, library_id FROM assets
         WHERE id = ANY(${ids}::uuid[]) AND owner_id = ${userId}
       `;
       const { deleteAssetFiles } = await import('../lib/storage.js');
       for (const row of rows) {
-        await deleteAssetFiles(row.owner_id, row.id, row.storage_path);
+        // Never delete a file Aperture did not write — an external original is
+        // the user's own, and forgetting it is the most we may do.
+        await deleteAssetFiles(row.owner_id, row.id, row.storage_path, row.library_id !== null);
       }
       await sql`DELETE FROM assets WHERE id = ANY(${ids}::uuid[]) AND owner_id = ${userId}`;
     } else {

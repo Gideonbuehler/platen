@@ -24,6 +24,9 @@ export async function ensureStorageDirs(): Promise<void> {
     mkdir(config.LIBRARY_PATH, { recursive: true }),
     mkdir(config.THUMBS_PATH, { recursive: true }),
     mkdir(config.UPLOAD_TMP_PATH, { recursive: true }),
+    // Created even when unused, so the browse endpoint has something to list
+    // and the volume mapping is obvious from inside the container.
+    mkdir(config.EXTERNAL_ROOT, { recursive: true }),
   ]);
 }
 
@@ -192,13 +195,42 @@ async function pruneEmptyParents(startDir: string): Promise<void> {
   }
 }
 
+/**
+ * Absolute path of an external library root.
+ *
+ * Confined to EXTERNAL_ROOT so a bad or malicious library path cannot reach
+ * outside the shares an admin deliberately mounted.
+ */
+export function externalRootPath(libraryPathValue: string): string {
+  return safeJoin(config.EXTERNAL_ROOT, libraryPathValue.replace(/^\/+/, ''));
+}
+
+/**
+ * Absolute path of an asset's original, wherever it lives.
+ *
+ * `libraryRoot` is absent for uploaded assets, which sit under LIBRARY_PATH,
+ * and present for external ones, whose `storage_path` is relative to their own
+ * library root instead.
+ */
+export function originalPathFor(storagePath: string, libraryRoot?: string | null): string {
+  if (!libraryRoot) return libraryPath(storagePath);
+  return safeJoin(libraryRoot, storagePath);
+}
+
 /** Removes an original and all its derivatives. Used by the trash purge job. */
 export async function deleteAssetFiles(
   userId: string,
   assetId: string,
   relativeStoragePath: string,
+  isExternal = false,
 ): Promise<void> {
-  await rm(libraryPath(relativeStoragePath), { force: true });
+  // An external original is someone's own file that Aperture merely indexed.
+  // Deleting it would mean this app destroying data it never created — the
+  // exact fear that stops people pointing a photo app at their existing
+  // library. Removing it here only forgets it; the derivatives are ours and go.
+  if (!isExternal) {
+    await rm(libraryPath(relativeStoragePath), { force: true });
+  }
   await rm(thumbsPath(thumbDir(userId, assetId)), { recursive: true, force: true });
 }
 
