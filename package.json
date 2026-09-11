@@ -3,8 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "description": "Self-hosted photo and video backup for Unraid",
-  "workspaces": ["shared", "server", "web"],
-  "engines": { "node": ">=20" },
+  "workspaces": [
+    "shared",
+    "server",
+    "web"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "build": "npm run build -w shared && npm run build -w server && npm run build -w web",
     "dev": "concurrently -n server,web -c blue,magenta \"npm run dev -w server\" \"npm run dev -w web\"",
@@ -14,7 +20,8 @@
     "typecheck": "npm run typecheck -w shared && npm run typecheck -w server && npm run typecheck -w web",
     "docker:build": "docker build -f docker/Dockerfile -t aperture:local .",
     "docker:up": "docker compose -f docker/docker-compose.yml up -d",
-    "docker:down": "docker compose -f docker/docker-compose.yml down"
+    "docker:down": "docker compose -f docker/docker-compose.yml down",
+    "test": "npm run test -w server"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",

@@ -7,6 +7,7 @@ import type { Asset, Page, TimelineBucket, UploadCheckResponse, UploadResult } f
 import { sql } from '../db/index.js';
 import { badRequest, forbidden, notFound, quotaExceeded } from '../lib/errors.js';
 import { assetColumns, assetColumnsWithExif, toAssetDto, type AssetRow } from '../lib/mappers.js';
+import { classify } from '../lib/media-types.js';
 import {
   buildStoragePath,
   commitUpload,
@@ -26,43 +27,6 @@ import { enqueue } from '../jobs/queue.js';
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-const IMAGE_MIME = /^image\//;
-const VIDEO_MIME = /^video\//;
-
-/** Some phones send octet-stream; fall back to the extension. */
-function classify(mimeType: string, filename: string): { type: 'image' | 'video'; mime: string } {
-  if (IMAGE_MIME.test(mimeType)) return { type: 'image', mime: mimeType };
-  if (VIDEO_MIME.test(mimeType)) return { type: 'video', mime: mimeType };
-
-  const ext = filename.toLowerCase().split('.').pop() ?? '';
-  const videoExts = ['mp4', 'mov', 'm4v', 'avi', 'mkv', 'webm', '3gp', 'mts', 'hevc'];
-  const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif', 'tif', 'tiff', 'bmp', 'avif'];
-
-  // RAW needs real registered types. Naively building `image/<ext>` produced
-  // nonsense like "image/arw", which browsers refuse to render and which makes
-  // a downloaded original open in the wrong application.
-  const rawMimes: Record<string, string> = {
-    arw: 'image/x-sony-arw',
-    cr2: 'image/x-canon-cr2',
-    cr3: 'image/x-canon-cr3',
-    nef: 'image/x-nikon-nef',
-    nrw: 'image/x-nikon-nrw',
-    dng: 'image/x-adobe-dng',
-    raf: 'image/x-fuji-raf',
-    orf: 'image/x-olympus-orf',
-    rw2: 'image/x-panasonic-rw2',
-    pef: 'image/x-pentax-pef',
-    srw: 'image/x-samsung-srw',
-  };
-
-  if (videoExts.includes(ext)) return { type: 'video', mime: `video/${ext === 'mov' ? 'quicktime' : ext}` };
-  const rawMime = rawMimes[ext];
-  if (rawMime) return { type: 'image', mime: rawMime };
-  if (imageExts.includes(ext)) return { type: 'image', mime: `image/${ext === 'jpg' ? 'jpeg' : ext}` };
-
-  throw badRequest(`Unsupported file type: ${filename}`);
-}
 
 function encodeCursor(takenAt: Date, id: string): string {
   return Buffer.from(`${takenAt.toISOString()}|${id}`).toString('base64url');
