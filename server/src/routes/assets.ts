@@ -3,7 +3,14 @@ import { readFile, stat } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import type { Asset, Page, TimelineBucket, UploadCheckResponse, UploadResult } from '@aperture/shared';
+import type {
+  Asset,
+  Memory,
+  Page,
+  TimelineBucket,
+  UploadCheckResponse,
+  UploadResult,
+} from '@aperture/shared';
 import { sql } from '../db/index.js';
 import { badRequest, forbidden, notFound, quotaExceeded } from '../lib/errors.js';
 import { assetColumns, assetColumnsWithExif, toAssetDto, type AssetRow } from '../lib/mappers.js';
@@ -337,6 +344,83 @@ export async function assetRoutes(app: FastifyInstance): Promise<void> {
       ORDER BY 1 DESC
     `;
     return rows satisfies TimelineBucket[];
+  });
+
+  /**
+   * Photos taken on this date in earlier years.
+   *
+   * `month` and `day` are the client's, not the server's. A NAS in UTC and a
+   * phone in Chicago disagree about what day it is for six hours out of every
+   * twenty-four, and the viewer is right — so whoever is asking says which date
+   * they mean, and the server only falls back to its own when not told.
+   *
+   * Matching is on the camera's wall clock rather than the stored instant, for
+   * the same reason the timeline groups that way: a photo taken at 11pm on
+   * someone's birthday should resurface on that birthday, not the day after.
+   */
+  app.get('/memories', async (request) => {
+    const { userId } = auth(request);
+    const query = z
+      .object({
+        month: z.coerce.number().int().min(1).max(12).optional(),
+        day: z.coerce.number().int().min(1).max(31).optional(),
+        /** Most recent years first; older ones are usually the better memory. */
+        limitYears: z.coerce.number().int().min(1).max(20).default(8),
+        perYear: z.coerce.number().int().min(1).max(60).default(24),
+      })
+      .parse(request.query);
+
+    const now = new Date();
+    const month = query.month ?? now.getMonth() + 1;
+    const day = query.day ?? now.getDate();
+    const thisYear = now.getFullYear();
+
+    // The camera's wall clock: the stored instant shifted by the offset the
+    // file recorded, exactly as the clients do when they group by day.
+    const localTaken = sql`
+      (a.taken_at AT TIME ZONE 'UTC' + COALESCE(a.taken_at_offset, '+00:00')::interval)
+    `;
+
+    const years = await sql<{ year: number; count: number }[]>`
+      SELECT EXTRACT(YEAR FROM ${localTaken})::int AS year, COUNT(*)::int AS count
+      FROM assets a
+      WHERE a.owner_id = ${userId}
+        AND a.deleted_at IS NULL
+        AND a.is_archived = false
+        AND EXTRACT(MONTH FROM ${localTaken}) = ${month}
+        AND EXTRACT(DAY FROM ${localTaken}) = ${day}
+      GROUP BY 1
+      HAVING EXTRACT(YEAR FROM ${localTaken})::int < ${thisYear}
+      ORDER BY 1 DESC
+      LIMIT ${query.limitYears}
+    `;
+
+    const memories: Memory[] = [];
+    for (const { year, count } of years) {
+      const rows = await sql<AssetRow[]>`
+        SELECT ${sql.unsafe(assetColumns())}
+        FROM assets a
+        WHERE a.owner_id = ${userId}
+          AND a.deleted_at IS NULL
+          AND a.is_archived = false
+          AND EXTRACT(YEAR FROM ${localTaken}) = ${year}
+          AND EXTRACT(MONTH FROM ${localTaken}) = ${month}
+          AND EXTRACT(DAY FROM ${localTaken}) = ${day}
+        ORDER BY a.taken_at
+        LIMIT ${query.perYear}
+      `;
+      if (rows.length === 0) continue;
+
+      memories.push({
+        year,
+        yearsAgo: thisYear - year,
+        date: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+        assetCount: count,
+        assets: rows.map(toAssetDto),
+      });
+    }
+
+    return memories;
   });
 
   /** Cursor-paged asset list, newest first. */

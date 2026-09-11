@@ -4,6 +4,7 @@ import type { Asset } from '@aperture/shared';
 import { AddToAlbumDialog } from '../components/AddToAlbumDialog';
 import { IconArchive, IconHeart, IconPhotos, IconSpinner, IconTrash } from '../components/Icons';
 import { Lightbox } from '../components/Lightbox';
+import { MemoriesStrip } from '../components/MemoriesStrip';
 import { PhotoGrid } from '../components/PhotoGrid';
 import { SelectionBar } from '../components/SelectionBar';
 import { TimelineScrubber } from '../components/TimelineScrubber';
@@ -63,6 +64,14 @@ export function TimelinePage({ variant }: { variant: TimelineVariant }) {
 
   const [selection, setSelection] = useState<Set<string>>(new Set());
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  /**
+   * A memory opens its own viewer over its own list.
+   *
+   * Reusing the timeline's would mean swiping out of 2019 and straight into
+   * last Tuesday — "next" inside a memory means the next photo from that day,
+   * which is a different list entirely.
+   */
+  const [memoryView, setMemoryView] = useState<{ assets: Asset[]; index: number } | null>(null);
   const [albumDialogOpen, setAlbumDialogOpen] = useState(false);
 
   const copy = COPY[variant];
@@ -129,6 +138,10 @@ export function TimelinePage({ variant }: { variant: TimelineVariant }) {
           )}
         </div>
       </header>
+
+      {variant === 'all' && (
+        <MemoriesStrip onOpen={(memoryAssets, index) => setMemoryView({ assets: memoryAssets, index })} />
+      )}
 
       <PhotoGrid
         assets={assets}
@@ -226,6 +239,20 @@ export function TimelinePage({ variant }: { variant: TimelineVariant }) {
             setLightboxIndex((current) =>
               current === null ? null : current >= assets.length - 1 ? null : current,
             );
+          }}
+        />
+      )}
+
+      {memoryView && (
+        <Lightbox
+          assets={memoryView.assets}
+          index={memoryView.index}
+          onIndexChange={(index) => setMemoryView((current) => (current ? { ...current, index } : null))}
+          onClose={() => setMemoryView(null)}
+          onToggleFavorite={(asset) => toggleFavorite.mutate({ asset })}
+          onDelete={(asset) => {
+            deleteAssets.mutate({ ids: [asset.id] });
+            setMemoryView(null);
           }}
         />
       )}

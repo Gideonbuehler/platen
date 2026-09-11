@@ -6,6 +6,7 @@ import type {
   AuthResponse,
   AuthTokens,
   FaceStatus,
+  Memory,
   Page,
   Person,
   SearchHit,
@@ -280,6 +281,17 @@ export const api = {
 
   deleteAssets: (ids: string[]) =>
     request<void>('/assets/delete', { method: 'POST', body: { ids }, raw: true }),
+
+  /**
+   * Today's date in earlier years. The date is the phone's, not the server's —
+   * a NAS in UTC and a phone in Chicago disagree about what day it is for six
+   * hours out of every twenty-four, and being a day out is the whole bug on a
+   * feature whose premise is "today".
+   */
+  memories: () => {
+    const now = new Date();
+    return request<Memory[]>(`/assets/memories?month=${now.getMonth() + 1}&day=${now.getDate()}`);
+  },
 
   albums: () => request<Album[]>('/albums'),
   albumAssets: (id: string) => request<Page<Asset>>(`/albums/${id}/assets`),

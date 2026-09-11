@@ -132,3 +132,20 @@ export interface FaceStatus {
   people: number;
   faces: number;
 }
+
+/**
+ * One year's photos from today's date in an earlier year.
+ *
+ * The label is the client's job: only the phone knows the viewer's language
+ * and what "today" means where they are standing.
+ */
+export interface Memory {
+  year: number;
+  /** 1 = last year. Never 0; today is not a memory. */
+  yearsAgo: number;
+  /** The camera-local date, YYYY-MM-DD. */
+  date: string;
+  /** Total that day, which can exceed `assets.length`. */
+  assetCount: number;
+  assets: Asset[];
+}

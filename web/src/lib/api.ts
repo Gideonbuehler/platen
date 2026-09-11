@@ -5,6 +5,7 @@ import type {
   ExternalLibrary,
   Face,
   FaceStatus,
+  Memory,
   Person,
   AuthResponse,
   AuthTokens,
@@ -266,6 +267,9 @@ export const api = {
   deleteUser: (id: string) => request<void>(`/server/users/${id}`, { method: 'DELETE', raw: true }),
   reindex: (what: 'thumbnails' | 'metadata' | 'embeddings') =>
     request<{ queued: number }>('/server/jobs/reindex', { method: 'POST', body: { what } }),
+
+  memories: (month: number, day: number) =>
+    request<Memory[]>(`/assets/memories?month=${month}&day=${day}`),
 
   writeSidecars: () =>
     request<{ queued: boolean }>('/server/jobs/sidecars', { method: 'POST' }),

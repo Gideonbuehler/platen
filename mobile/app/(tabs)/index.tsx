@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { MemoriesRow } from '../../src/components/MemoriesRow';
 import { PhotoGrid } from '../../src/components/PhotoGrid';
 import { api } from '../../src/lib/api';
 import { useSession } from '../../src/lib/session';
@@ -59,6 +60,7 @@ export default function TimelineScreen() {
         onRefresh={onRefresh}
         onEndReached={onEndReached}
         loadingMore={loadingMore}
+        header={<MemoriesRow />}
         empty={
           <View style={styles.empty}>
             <Text style={styles.emptyTitle}>No photos yet</Text>
