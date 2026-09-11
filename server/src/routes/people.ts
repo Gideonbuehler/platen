@@ -11,7 +11,7 @@ import { thumbsPath } from '../lib/storage.js';
 import { auth, requireAuth } from '../middleware/auth.js';
 import { mergePeople } from '../services/clustering.js';
 import { getFaceStatus } from '../services/faces.js';
-import { enqueue } from '../jobs/queue.js';
+import { enqueueMany } from '../jobs/queue.js';
 
 interface PersonRow {
   id: string;
@@ -303,9 +303,10 @@ export async function peopleRoutes(app: FastifyInstance): Promise<void> {
         ${full ? sql`` : sql`AND faces_scanned_at IS NULL`}
     `;
 
-    for (const target of targets) {
-      await enqueue('face-detect', { assetId: target.id }, `face-detect:${target.id}`);
-    }
-    return { queued: targets.length };
+    const queued = await enqueueMany(
+      'face-detect',
+      targets.map((target) => target.id),
+    );
+    return { queued };
   });
 }

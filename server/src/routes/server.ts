@@ -7,7 +7,7 @@ import { sql } from '../db/index.js';
 import { badRequest, notFound } from '../lib/errors.js';
 import { auth, requireAdmin, requireAuth } from '../middleware/auth.js';
 import { hashPassword, revokeAllForUser, toUserDto, type UserRow } from '../services/auth.js';
-import { enqueue, retryFailed, stats as jobStats } from '../jobs/queue.js';
+import { enqueue, enqueueMany, retryFailed, stats as jobStats } from '../jobs/queue.js';
 import { getCacheStatus } from '../services/cache.js';
 import { sidecarStatus } from '../services/sidecar.js';
 
@@ -206,9 +206,10 @@ export async function serverRoutes(app: FastifyInstance): Promise<void> {
     const jobType: JobType =
       what === 'embeddings' ? 'embedding' : what === 'metadata' ? 'metadata' : 'thumbnail';
 
-    for (const target of targets) {
-      await enqueue(jobType, { assetId: target.id }, `${jobType}:${target.id}`);
-    }
-    return { queued: targets.length, type: jobType };
+    const queued = await enqueueMany(
+      jobType,
+      targets.map((target) => target.id),
+    );
+    return { queued, type: jobType };
   });
 }

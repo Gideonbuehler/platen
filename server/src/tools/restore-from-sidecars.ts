@@ -29,7 +29,7 @@ import { readdir, readFile, stat } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 import { config } from '../config.js';
 import { sql, closeDatabase, waitForDatabase } from '../db/index.js';
-import { enqueue } from '../jobs/queue.js';
+import { enqueueMany } from '../jobs/queue.js';
 import type { Sidecar } from '../services/sidecar.js';
 
 const APPLY = process.argv.includes('--apply');
@@ -218,14 +218,17 @@ async function apply(found: Found[]): Promise<void> {
 
   // Derivatives and embeddings are regenerable, and none of them are in the
   // sidecar, so every restored asset needs the pipeline run over it again.
-  for (const item of found) {
-    await enqueue('metadata', { assetId: item.sidecar.assetId }, `metadata:${item.sidecar.assetId}`);
-  }
+  // In bulk: a recovery run covers a whole library by definition, and one
+  // insert per photo would take longer than reading the sidecars did.
+  const requeued = await enqueueMany(
+    'metadata',
+    found.map((item) => item.sidecar.assetId),
+  );
 
   console.log(`\nRestored       ${restored} asset(s)`);
   console.log(`Already there  ${alreadyPresent}`);
   console.log(`Albums created ${albumsRestored}`);
-  console.log(`Queued         ${found.length} asset(s) for thumbnails and indexing`);
+  console.log(`Queued         ${requeued} asset(s) for thumbnails and indexing`);
 
   if (missingOwners.size > 0) {
     console.log('\nSkipped — no account with these addresses. Create them and run again:');

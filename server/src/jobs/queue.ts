@@ -36,6 +36,50 @@ export async function enqueue(
 }
 
 /**
+ * How many assets go into one INSERT.
+ *
+ * The whole array travels as a single bound parameter, so this is not about
+ * Postgres' parameter ceiling. It bounds the size of any one statement and
+ * keeps a very large library from building a multi-megabyte query string in
+ * memory before sending it.
+ */
+const ENQUEUE_CHUNK = 5_000;
+
+/**
+ * Enqueue the same job for many assets at once.
+ *
+ * The obvious version of this is a loop calling `enqueue`, and it was what
+ * "Reindex everything" used to do: one network round-trip per asset, awaited
+ * in sequence, inside the HTTP request. A hundred-thousand-photo library meant
+ * a hundred thousand sequential inserts while the browser sat on an open
+ * connection waiting, which reads as a hang and eventually times out.
+ *
+ * One statement per five thousand assets turns that into twenty round-trips.
+ * `ON CONFLICT DO NOTHING` keeps the same idempotency the single-asset path
+ * has, so re-running a reindex while one is already queued adds nothing.
+ *
+ * Returns the number of jobs actually created, which is what the caller should
+ * report: it excludes the ones already queued rather than claiming work that
+ * was not scheduled.
+ */
+export async function enqueueMany(type: JobType, assetIds: string[]): Promise<number> {
+  let queued = 0;
+
+  for (let offset = 0; offset < assetIds.length; offset += ENQUEUE_CHUNK) {
+    const chunk = assetIds.slice(offset, offset + ENQUEUE_CHUNK);
+    const result = await sql`
+      INSERT INTO jobs (type, payload, dedupe_key)
+      SELECT ${type}, jsonb_build_object('assetId', id), ${type} || ':' || id
+      FROM unnest(${chunk}::text[]) AS t(id)
+      ON CONFLICT (dedupe_key) DO NOTHING
+    `;
+    queued += result.count;
+  }
+
+  return queued;
+}
+
+/**
  * Atomically claims up to `limit` runnable jobs.
  *
  * SKIP LOCKED is the whole trick: several workers (or several container
