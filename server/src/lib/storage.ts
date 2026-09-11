@@ -60,6 +60,28 @@ export function buildStoragePath(
   return join(userId, year, month, `${assetId}${ext}`).replace(/\\/g, '/');
 }
 
+/**
+ * Where an asset's sidecar lives, relative to LIBRARY_PATH.
+ *
+ * `<uuid>.jpg` is described by `<uuid>.json` in the same folder, so copying a
+ * date folder anywhere carries the descriptions with it. Lives here rather
+ * than in the sidecar service because the file lifecycle — move, delete — is
+ * this module's job, and a description that outlives its original is worse
+ * than no description at all.
+ */
+export function sidecarRelativePath(storagePath: string): string {
+  // Storage paths are always built with forward slashes, so the character
+  // class only has to rule out a dot inside a directory name.
+  const withoutExtension = storagePath.replace(/\.[^./]*$/, '');
+  const path = `${withoutExtension}.json`;
+  // Cannot happen today — `.json` is not an accepted upload type — but the
+  // failure mode is overwriting a photo with a description of it.
+  if (path === storagePath) {
+    throw new Error(`Refusing to derive a sidecar path that collides with the original: ${storagePath}`);
+  }
+  return path;
+}
+
 export const thumbDir = (userId: string, assetId: string) =>
   join(userId, assetId).replace(/\\/g, '/');
 
@@ -167,6 +189,15 @@ export async function relocateOriginal(
     }
   }
 
+  // Keep the description with what it describes. Best-effort: a missing
+  // sidecar is normal (the asset may predate this, or its write may still be
+  // queued), and an unmovable one must not fail the original's move.
+  try {
+    await rename(libraryPath(sidecarRelativePath(fromRelative)), libraryPath(sidecarRelativePath(toRelative)));
+  } catch {
+    /* no sidecar to carry */
+  }
+
   await pruneEmptyParents(dirname(from));
   return 'moved';
 }
@@ -230,6 +261,8 @@ export async function deleteAssetFiles(
   // library. Removing it here only forgets it; the derivatives are ours and go.
   if (!isExternal) {
     await rm(libraryPath(relativeStoragePath), { force: true });
+    // The description has nothing left to describe.
+    await rm(libraryPath(sidecarRelativePath(relativeStoragePath)), { force: true });
   }
   await rm(thumbsPath(thumbDir(userId, assetId)), { recursive: true, force: true });
 }

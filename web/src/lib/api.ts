@@ -266,6 +266,9 @@ export const api = {
   deleteUser: (id: string) => request<void>(`/server/users/${id}`, { method: 'DELETE', raw: true }),
   reindex: (what: 'thumbnails' | 'metadata' | 'embeddings') =>
     request<{ queued: number }>('/server/jobs/reindex', { method: 'POST', body: { what } }),
+
+  writeSidecars: () =>
+    request<{ queued: boolean }>('/server/jobs/sidecars', { method: 'POST' }),
   retryJobs: (type?: string) =>
     request<{ requeued: number }>('/server/jobs/retry', { method: 'POST', body: { type } }),
 

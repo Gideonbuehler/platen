@@ -145,6 +145,13 @@ export function SettingsPage() {
     },
   });
 
+  const writeSidecars = useMutation({
+    mutationFn: () => api.writeSidecars(),
+    onSuccess: () => {
+      setMessage({ kind: 'ok', text: 'Reconciling sidecars. Refresh in a moment for the result.' });
+    },
+  });
+
   const rescanFaces = useMutation({
     mutationFn: (full: boolean) => api.rescanFaces(full),
     onSuccess: (result) => {
@@ -160,6 +167,18 @@ export function SettingsPage() {
       void queryClient.invalidateQueries({ queryKey: ['stats'] });
     },
   });
+
+  /**
+   * Green only when the last sweep wrote everything it needed to and the
+   * number it covered matches the library. A sweep that failed on even one
+   * file means there is a photo nothing on disk describes.
+   */
+  const sidecarsHealthy =
+    stats != null &&
+    stats.sidecars.lastSweep != null &&
+    stats.sidecars.lastSweep.failed === 0 &&
+    stats.sidecars.lastSweep.written + stats.sidecars.lastSweep.unchanged >=
+      stats.sidecars.describedAssets;
 
   const quotaPercent =
     user?.quotaBytes && user.quotaBytes > 0
@@ -418,6 +437,61 @@ export function SettingsPage() {
           <p className="settings-hint">Checking…</p>
         )}
       </section>
+
+      {/* ---- Recoverability -------------------------------------------------- */}
+      {user?.isAdmin && stats && (
+        <section className="settings-section card">
+          <h2>Library recovery</h2>
+
+          <p className="settings-hint">
+            Originals are stored under their internal ID, so the filename on disk carries no
+            information. A small JSON file beside each one records its real name, capture time,
+            albums and people — which means the library can be rebuilt even if the database is
+            lost. Keep backing up Postgres; this is what works when that backup does not.
+          </p>
+
+          <div className="settings-index-head">
+            <span
+              className={`settings-dot is-${
+                sidecarsHealthy ? 'ready' : stats.sidecars.lastSweepAt ? 'error' : 'pending'
+              }`}
+              aria-hidden="true"
+            />
+            <span className="settings-index-state">
+              {!stats.sidecars.lastSweepAt
+                ? 'Not written yet'
+                : sidecarsHealthy
+                  ? `All ${stats.sidecars.describedAssets.toLocaleString()} photos and videos describe themselves`
+                  : `${stats.sidecars.lastSweep?.failed.toLocaleString()} could not be written`}
+            </span>
+          </div>
+
+          {stats.sidecars.lastSweepAt && (
+            <p className="settings-hint" style={{ marginBottom: 0 }}>
+              Last checked {new Date(stats.sidecars.lastSweepAt).toLocaleString()} ·{' '}
+              {stats.sidecars.lastSweep?.written.toLocaleString()} written,{' '}
+              {stats.sidecars.lastSweep?.unchanged.toLocaleString()} already current
+            </p>
+          )}
+
+          <div className="settings-actions" style={{ marginTop: 'var(--space-4)' }}>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => writeSidecars.mutate()}
+              disabled={writeSidecars.isPending}
+            >
+              {writeSidecars.isPending ? 'Queuing…' : 'Check now'}
+            </button>
+          </div>
+
+          <p className="settings-hint" style={{ marginTop: 'var(--space-4)', marginBottom: 0 }}>
+            This runs itself once a day. To rebuild from the files alone, run{' '}
+            <code>npm run restore -w server</code> inside the container — it reports what it finds
+            before changing anything.
+          </p>
+        </section>
+      )}
 
       {/* ---- Thumbnail cache ------------------------------------------------ */}
       {user?.isAdmin && stats && (

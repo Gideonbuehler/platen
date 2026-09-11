@@ -10,7 +10,8 @@
     "start": "node dist/index.js",
     "migrate": "tsx src/db/migrate.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --import tsx --test \"src/**/*.test.ts\""
+    "test": "node --import tsx --test \"src/**/*.test.ts\"",
+    "restore": "tsx src/tools/restore-from-sidecars.ts"
   },
   "dependencies": {
     "@aperture/shared": "*",

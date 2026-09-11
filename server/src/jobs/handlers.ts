@@ -23,6 +23,7 @@ import { embedImage, getMlStatus, toVectorLiteral } from '../services/ml.js';
 import { detectFaces, getFaceStatus, writeFaceCrop } from '../services/faces.js';
 import { assignFaceToPerson, pruneEmptyPeople, refreshCoverFaces } from '../services/clustering.js';
 import { scanLibrary } from '../services/scanner.js';
+import { sweepSidecars, writeSidecar } from '../services/sidecar.js';
 import { invalidateAsset } from '../services/cache.js';
 import { enqueue } from './queue.js';
 
@@ -119,6 +120,11 @@ async function handleMetadata(assetId: string): Promise<void> {
   await refileByCaptureDate(asset, meta.takenAt);
 
   await enqueue('thumbnail', { assetId }, `thumbnail:${assetId}`);
+
+  // Everything the sidecar records is settled now: dimensions, the corrected
+  // capture time, and the final resting path. Later changes — albums,
+  // favourites, a face gaining a name — are picked up by the daily sweep.
+  await enqueue('sidecar', { assetId }, `sidecar:${assetId}`);
 }
 
 /**
@@ -383,6 +389,13 @@ export async function runJob(type: JobType, payload: Record<string, unknown>): P
     }
     case 'trash-purge':
       return handleTrashPurge();
+    case 'sidecar':
+      if (!assetId) throw new Error('sidecar job requires assetId');
+      await writeSidecar(assetId);
+      return;
+    case 'sidecar-sweep':
+      await sweepSidecars();
+      return;
     case 'face-detect':
       if (!assetId) throw new Error('face-detect job requires assetId');
       return handleFaceDetect(assetId);

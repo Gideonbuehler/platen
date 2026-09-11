@@ -9,6 +9,7 @@ import { auth, requireAdmin, requireAuth } from '../middleware/auth.js';
 import { hashPassword, revokeAllForUser, toUserDto, type UserRow } from '../services/auth.js';
 import { enqueue, retryFailed, stats as jobStats } from '../jobs/queue.js';
 import { getCacheStatus } from '../services/cache.js';
+import { sidecarStatus } from '../services/sidecar.js';
 
 const VERSION = '0.1.0';
 
@@ -58,6 +59,7 @@ export async function serverRoutes(app: FastifyInstance): Promise<void> {
     const [users] = await sql<{ count: number }[]>`SELECT COUNT(*)::int AS count FROM users`;
 
     const raw = await jobStats();
+    const sidecars = await sidecarStatus();
     const byType = new Map<string, JobStats>();
     for (const row of raw) {
       const entry = byType.get(row.type) ?? { type: row.type as JobType, pending: 0, active: 0, failed: 0 };
@@ -75,6 +77,7 @@ export async function serverRoutes(app: FastifyInstance): Promise<void> {
       videos: totals?.videos ?? 0,
       usageBytes: Number(totals?.usage ?? 0),
       jobs: [...byType.values()],
+      sidecars,
     } satisfies ServerStats;
   });
 
@@ -168,6 +171,18 @@ export async function serverRoutes(app: FastifyInstance): Promise<void> {
     // because every asset row goes with the user.
     await sql`DELETE FROM users WHERE id = ${id}`;
     return reply.code(204).send();
+  });
+
+  /**
+   * Force a sidecar reconciliation now rather than waiting for the daily one.
+   *
+   * The button exists because "my library describes itself" is a promise you
+   * want to be able to check immediately after changing a lot of albums or
+   * naming people, not one you take on trust until the next sweep.
+   */
+  app.post('/jobs/sidecars', { preHandler: requireAdmin }, async () => {
+    await enqueue('sidecar-sweep', {}, 'sidecar-sweep:recurring');
+    return { queued: true };
   });
 
   /** Re-queue work: failed thumbnails, or a full ML re-index. */

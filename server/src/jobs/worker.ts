@@ -14,6 +14,11 @@ const STALE_SWEEP_MS = 5 * 60 * 1000;
 // Hourly is plenty: the purge only acts on assets already past the retention
 // window, so the exact moment it runs never matters.
 const PURGE_INTERVAL_MS = 60 * 60 * 1000;
+// The sidecar sweep reconciles on-disk descriptions with the database. Daily
+// is the right cadence: fresh uploads get their own job immediately, so this
+// only has to catch retroactive edits — naming a person, building an album —
+// where a few hours of lag costs nothing.
+const SIDECAR_SWEEP_MS = 24 * 60 * 60 * 1000;
 // How often we look for libraries due a rescan; the per-library interval is
 // what actually governs frequency.
 const SCAN_CHECK_MS = 10 * 60 * 1000;
@@ -119,6 +124,21 @@ export function startWorker(log: FastifyBaseLogger): () => Promise<void> {
   armScans();
   const scanSchedule = setInterval(armScans, SCAN_CHECK_MS);
 
+  // Same dedupe-key discipline as the purge: one outstanding sweep at most,
+  // however often this fires or the server restarts. The first run is delayed
+  // so a restart during an import does not add a full library walk to the
+  // queue the backlog is already working through.
+  const armSidecarSweep = () =>
+    void enqueue(
+      'sidecar-sweep',
+      {},
+      'sidecar-sweep:recurring',
+      new Date(Date.now() + 5 * 60 * 1000),
+    ).catch((err) => log.error({ err }, 'could not schedule sidecar sweep'));
+
+  armSidecarSweep();
+  const sidecarSchedule = setInterval(armSidecarSweep, SIDECAR_SWEEP_MS);
+
   log.info(`Job worker ${WORKER_ID} started (concurrency ${config.JOB_CONCURRENCY}).`);
   loopDone = loop();
 
@@ -127,6 +147,7 @@ export function startWorker(log: FastifyBaseLogger): () => Promise<void> {
     clearInterval(staleSweep);
     clearInterval(purgeSchedule);
     clearInterval(scanSchedule);
+    clearInterval(sidecarSchedule);
     await loopDone;
     log.info('Job worker stopped.');
   };

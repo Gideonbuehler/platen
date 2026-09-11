@@ -326,6 +326,32 @@ Aperture is where your photos live, so it needs a backup of its own:
   `docker exec aperture-db pg_dump -U aperture aperture | gzip > aperture.sql.gz`
 - `/data/thumbs` — skip it. Regenerable in one click.
 
+### If you lose the database
+
+Originals are stored as `<id>.jpg`, so the filenames on disk carry nothing.
+Without help, losing Postgres would leave a correctly-dated pile of UUIDs: no
+names, no albums, no favourites.
+
+So every original has a small JSON sidecar written beside it recording its real
+filename, checksum, capture time, EXIF, album membership and any named people.
+Copying a date folder carries the descriptions with it. It is reconciled daily,
+and Settings shows when it last ran.
+
+To rebuild from the files alone:
+
+```bash
+docker exec aperture sh -c 'cd /app/server && node dist/tools/restore-from-sidecars.js'
+```
+
+That reports what it found and changes nothing. Add `--apply` to write the rows,
+and `--verify` to re-hash every file against its recorded checksum first — slow,
+but it tells you whether the bytes are still intact as well as still present.
+
+Two caveats. Accounts are not recreated, because a sidecar holds no password:
+create the users first with the same email addresses. And face recognition
+cannot come back this way — the embeddings are not in the sidecars — so re-run
+detection and name the groups again. The tool prints the old names to work from.
+
 ---
 
 ## Licence

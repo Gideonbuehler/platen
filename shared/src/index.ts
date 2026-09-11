@@ -287,7 +287,9 @@ export type JobType =
   | 'embedding'
   | 'face-detect'
   | 'library-scan'
-  | 'trash-purge';
+  | 'trash-purge'
+  | 'sidecar'
+  | 'sidecar-sweep';
 
 export interface JobStats {
   type: JobType;
@@ -316,6 +318,21 @@ export interface ServerStats {
   videos: number;
   usageBytes: number;
   jobs: JobStats[];
+  sidecars: SidecarStatus;
+}
+
+/**
+ * Whether the library can describe itself without the database.
+ *
+ * Originals are stored under UUID filenames, so a sidecar is what carries the
+ * real name, the albums and the people beside each file. This reports the last
+ * reconciliation rather than counting files on every request.
+ */
+export interface SidecarStatus {
+  /** Assets that should have one: owned, not trashed, not an external library. */
+  describedAssets: number;
+  lastSweepAt: string | null;
+  lastSweep: { written: number; unchanged: number; failed: number } | null;
 }
 
 // ---------------------------------------------------------------------------
