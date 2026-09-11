@@ -1,10 +1,10 @@
 {
   "expo": {
-    "name": "Aperture",
-    "slug": "aperture",
+    "name": "Platen",
+    "slug": "platen",
     "version": "0.1.0",
     "orientation": "portrait",
-    "scheme": "aperture",
+    "scheme": "platen",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
@@ -16,16 +16,16 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.aperture.app",
+      "bundleIdentifier": "com.platen.app",
       "infoPlist": {
-        "NSPhotoLibraryUsageDescription": "Aperture needs access to your photos so it can back them up to your own server.",
-        "NSPhotoLibraryAddUsageDescription": "Aperture saves photos you download from your server back to your library.",
-        "_comment_ats": "Most people run Aperture on a LAN address over plain HTTP. iOS blocks that by default, so local networking is explicitly permitted here. Public HTTPS deployments are unaffected.",
+        "NSPhotoLibraryUsageDescription": "Platen needs access to your photos so it can back them up to your own server.",
+        "NSPhotoLibraryAddUsageDescription": "Platen saves photos you download from your server back to your library.",
+        "_comment_ats": "Most people run Platen on a LAN address over plain HTTP. iOS blocks that by default, so local networking is explicitly permitted here. Public HTTPS deployments are unaffected.",
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true,
           "NSAllowsArbitraryLoads": true
         },
-        "NSLocalNetworkUsageDescription": "Aperture connects to your photo server on your home network.",
+        "NSLocalNetworkUsageDescription": "Platen connects to your photo server on your home network.",
         "UIBackgroundModes": [
           "fetch",
           "processing"
@@ -33,7 +33,7 @@
       }
     },
     "android": {
-      "package": "com.aperture.app",
+      "package": "com.platen.app",
       "adaptiveIcon": {
         "backgroundColor": "#0b0b0e"
       },
@@ -51,8 +51,8 @@
       [
         "expo-media-library",
         {
-          "photosPermission": "Aperture needs access to your photos so it can back them up to your own server.",
-          "savePhotosPermission": "Aperture saves photos you download from your server back to your library.",
+          "photosPermission": "Platen needs access to your photos so it can back them up to your own server.",
+          "savePhotosPermission": "Platen saves photos you download from your server back to your library.",
           "isAccessMediaLocationEnabled": true
         }
       ],

@@ -60,7 +60,7 @@ export default function BackupScreen() {
     if (enabled && !(await ensurePermission())) {
       Alert.alert(
         'Photo access needed',
-        'Aperture needs access to your photo library to back it up. Enable it in system settings.',
+        'Platen needs access to your photo library to back it up. Enable it in system settings.',
       );
       return;
     }
@@ -247,7 +247,7 @@ export default function BackupScreen() {
       {/* --- iOS honesty ------------------------------------------------ */}
       {Platform.OS === 'ios' && (
         <Text style={styles.footnote}>
-          iOS does not allow apps to upload continuously in the background. Aperture syncs every
+          iOS does not allow apps to upload continuously in the background. Platen syncs every
           time you open it, and takes whatever background windows iOS offers — which become more
           frequent the more often you use the app.
         </Text>
@@ -276,7 +276,7 @@ export default function BackupScreen() {
           onPress={() =>
             Alert.alert(
               'Re-check every photo?',
-              'Aperture will offer your whole library again. Anything the server already has is detected and skipped, so nothing is duplicated — it just takes longer.',
+              'Platen will offer your whole library again. Anything the server already has is detected and skipped, so nothing is duplicated — it just takes longer.',
               [
                 { text: 'Cancel', style: 'cancel' },
                 {

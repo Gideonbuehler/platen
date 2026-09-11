@@ -502,7 +502,7 @@ export function SettingsPage() {
             <p className="settings-hint" style={{ marginBottom: 0 }}>
               Not configured. Thumbnails are read from disk, which is fine on SSD storage. If your
               photos live on a spinning array, adding Redis keeps the grid smooth while scrolling —
-              set <code>REDIS_URL</code> and start the <code>aperture-redis</code> container.
+              set <code>REDIS_URL</code> and start the <code>platen-redis</code> container.
             </p>
           ) : (
             <>
@@ -598,7 +598,7 @@ export function SettingsPage() {
                     onClick={() => {
                       if (
                         window.confirm(
-                          `Stop indexing "${library.name}"? Your files stay exactly where they are — this only removes them from Aperture.`,
+                          `Stop indexing "${library.name}"? Your files stay exactly where they are — this only removes them from Platen.`,
                         )
                       ) {
                         removeLibrary.mutate(library.id);

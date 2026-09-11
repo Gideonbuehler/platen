@@ -168,8 +168,8 @@ export async function invalidateAsset(assetId: string): Promise<void> {
   }
 }
 
-export const thumbKey = (assetId: string) => `aperture:thumb:${assetId}`;
-export const previewKey = (assetId: string) => `aperture:preview:${assetId}`;
+export const thumbKey = (assetId: string) => `platen:thumb:${assetId}`;
+export const previewKey = (assetId: string) => `platen:preview:${assetId}`;
 
 export async function closeCache(): Promise<void> {
   if (!client) return;

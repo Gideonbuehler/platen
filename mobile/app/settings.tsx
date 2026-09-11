@@ -91,7 +91,7 @@ export default function SettingsScreen() {
       </Pressable>
 
       <Text style={styles.footnote}>
-        Aperture · your photos stay on your own server.
+        Platen · your photos stay on your own server.
       </Text>
     </ScrollView>
   );

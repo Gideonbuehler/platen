@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { TimelineBucket } from '@aperture/shared';
+import type { TimelineBucket } from '@platen/shared';
 import './TimelineScrubber.css';
 
 interface TimelineScrubberProps {

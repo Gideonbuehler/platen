@@ -125,4 +125,4 @@ export function useSession(): SessionValue {
 }
 
 /** Label shown in the server's session list, so a lost phone is identifiable. */
-export const deviceLabel = `${Platform.OS === 'ios' ? 'iPhone' : 'Android'} · Aperture`;
+export const deviceLabel = `${Platform.OS === 'ios' ? 'iPhone' : 'Android'} · Platen`;

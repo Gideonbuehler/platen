@@ -19,9 +19,9 @@ import type {
   UploadCheckResponse,
   UploadResult,
   User,
-} from '@aperture/shared';
+} from '@platen/shared';
 
-const STORAGE_KEY = 'aperture.auth';
+const STORAGE_KEY = 'platen.auth';
 
 export class ApiRequestError extends Error {
   constructor(

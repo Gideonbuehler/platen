@@ -116,7 +116,7 @@ if (!parsed.success) {
     .map((i) => `  - ${i.path.join('.')}: ${i.message}`)
     .join('\n');
   // eslint-disable-next-line no-console
-  console.error(`\nAperture cannot start — invalid configuration:\n${issues}\n`);
+  console.error(`\nPlaten cannot start — invalid configuration:\n${issues}\n`);
   process.exit(1);
 }
 

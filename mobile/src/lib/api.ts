@@ -26,10 +26,10 @@ import type {
  *    on a locked iOS device.
  */
 
-const SERVER_URL_KEY = 'aperture.serverUrl';
-const ACCESS_TOKEN_KEY = 'aperture.accessToken';
-const REFRESH_TOKEN_KEY = 'aperture.refreshToken';
-const EXPIRES_AT_KEY = 'aperture.expiresAt';
+const SERVER_URL_KEY = 'platen.serverUrl';
+const ACCESS_TOKEN_KEY = 'platen.accessToken';
+const REFRESH_TOKEN_KEY = 'platen.refreshToken';
+const EXPIRES_AT_KEY = 'platen.expiresAt';
 
 export class ApiError extends Error {
   constructor(

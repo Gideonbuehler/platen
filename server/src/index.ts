@@ -55,7 +55,7 @@ async function build(): Promise<void> {
   await app.register(cors, {
     // The mobile app is a native client with no browser origin, and the web UI
     // is same-origin, so a permissive default is safe here and saves users
-    // debugging CORS when they put Aperture behind a proxy.
+    // debugging CORS when they put Platen behind a proxy.
     origin: true,
     credentials: true,
   });
@@ -185,7 +185,7 @@ async function start(): Promise<void> {
   void warmUpFaces((msg) => app.log.info(msg));
 
   await app.listen({ port: config.PORT, host: config.HOST });
-  app.log.info(`Aperture is ready at ${config.PUBLIC_URL}`);
+  app.log.info(`Platen is ready at ${config.PUBLIC_URL}`);
 
   // -------------------------------------------------------------------------
   // Graceful shutdown: finish in-flight jobs so we never leave a half-written
@@ -221,6 +221,6 @@ async function start(): Promise<void> {
 }
 
 start().catch((err) => {
-  app.log.error({ err }, 'Aperture failed to start');
+  app.log.error({ err }, 'Platen failed to start');
   process.exit(1);
 });

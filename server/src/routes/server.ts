@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import type { JobStats, JobType, ServerInfo, ServerStats } from '@aperture/shared';
-import { API_VERSION } from '@aperture/shared';
+import type { JobStats, JobType, ServerInfo, ServerStats } from '@platen/shared';
+import { API_VERSION } from '@platen/shared';
 import { config } from '../config.js';
 import { sql } from '../db/index.js';
 import { badRequest, notFound } from '../lib/errors.js';
@@ -16,13 +16,13 @@ const VERSION = '0.1.0';
 export async function serverRoutes(app: FastifyInstance): Promise<void> {
   /**
    * Unauthenticated. The mobile app hits this first to confirm a URL points at
-   * an Aperture server before it shows a login form — much friendlier than
+   * an Platen server before it shows a login form — much friendlier than
    * failing on the login request itself.
    */
   app.get('/info', async () => {
     const [row] = await sql<{ count: number }[]>`SELECT COUNT(*)::int AS count FROM users`;
     return {
-      name: 'Aperture',
+      name: 'Platen',
       version: VERSION,
       apiVersion: API_VERSION,
       needsOnboarding: (row?.count ?? 0) === 0,

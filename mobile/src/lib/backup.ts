@@ -22,13 +22,13 @@ import { getAccessToken, getServerUrl } from './api';
  */
 
 const KEYS = {
-  enabled: 'aperture.backup.enabled',
-  wifiOnly: 'aperture.backup.wifiOnly',
-  includeVideos: 'aperture.backup.includeVideos',
-  ledger: 'aperture.backup.ledger',
-  deviceId: 'aperture.backup.deviceId',
-  lastRun: 'aperture.backup.lastRun',
-  stats: 'aperture.backup.stats',
+  enabled: 'platen.backup.enabled',
+  wifiOnly: 'platen.backup.wifiOnly',
+  includeVideos: 'platen.backup.includeVideos',
+  ledger: 'platen.backup.ledger',
+  deviceId: 'platen.backup.deviceId',
+  lastRun: 'platen.backup.lastRun',
+  stats: 'platen.backup.stats',
 } as const;
 
 export interface BackupSettings {

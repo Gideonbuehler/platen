@@ -255,7 +255,7 @@ export async function deleteAssetFiles(
   relativeStoragePath: string,
   isExternal = false,
 ): Promise<void> {
-  // An external original is someone's own file that Aperture merely indexed.
+  // An external original is someone's own file that Platen merely indexed.
   // Deleting it would mean this app destroying data it never created — the
   // exact fear that stops people pointing a photo app at their existing
   // library. Removing it here only forgets it; the derivatives are ours and go.

@@ -3,7 +3,7 @@ const { getDefaultConfig } = require('expo/metro-config');
 /**
  * Standard Expo Metro config.
  *
- * The mobile app deliberately does not consume the `@aperture/shared` workspace
+ * The mobile app deliberately does not consume the `@platen/shared` workspace
  * package: Metro's monorepo resolution needs watchFolders plus nodeModulesPaths
  * tuning, and it breaks in confusing ways on Windows. The handful of API types
  * the app needs are mirrored in src/types.ts instead, with the shared package

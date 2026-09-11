@@ -10,7 +10,7 @@ interface ThemeContextValue {
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
-const STORAGE_KEY = 'aperture.theme';
+const STORAGE_KEY = 'platen.theme';
 
 function readStored(): ThemeChoice {
   try {

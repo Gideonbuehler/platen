@@ -4,7 +4,7 @@ import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import type { ShareLink } from '@aperture/shared';
+import type { ShareLink } from '@platen/shared';
 import { sql } from '../db/index.js';
 import { badRequest, forbidden, notFound, unauthorized } from '../lib/errors.js';
 import { assetColumnsWithExif, toAssetDto, type AssetRow } from '../lib/mappers.js';

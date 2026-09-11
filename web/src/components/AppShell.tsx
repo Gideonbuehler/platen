@@ -117,7 +117,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <aside className={`shell-sidebar${mobileNavOpen ? ' is-open' : ''}`}>
         <div className="shell-brand" onClick={() => navigate('/')}>
           <IconLogo size={24} />
-          <span>Aperture</span>
+          <span>Platen</span>
         </div>
 
         <nav className="shell-nav">

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { Asset } from '@aperture/shared';
+import type { Asset } from '@platen/shared';
 import { assetThumbnailUrl } from '../lib/api';
 import { computeLayout, responsiveRowHeight, type LayoutTile } from '../lib/justified';
 import { IconCheck, IconHeart, IconPlay } from './Icons';

@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import type { ServerInfo, User } from '@aperture/shared';
+import type { ServerInfo, User } from '@platen/shared';
 import { api, isAuthenticated, onAuthChange } from '../lib/api';
 
 interface AuthContextValue {

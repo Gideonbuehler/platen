@@ -1,4 +1,4 @@
--- Aperture initial schema.
+-- Platen initial schema.
 -- pgcrypto gives us gen_random_uuid(); vector powers semantic search.
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE EXTENSION IF NOT EXISTS vector;

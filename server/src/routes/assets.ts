@@ -10,7 +10,7 @@ import type {
   TimelineBucket,
   UploadCheckResponse,
   UploadResult,
-} from '@aperture/shared';
+} from '@platen/shared';
 import { sql } from '../db/index.js';
 import { badRequest, forbidden, notFound, quotaExceeded } from '../lib/errors.js';
 import { assetColumns, assetColumnsWithExif, toAssetDto, type AssetRow } from '../lib/mappers.js';
@@ -580,7 +580,7 @@ export async function assetRoutes(app: FastifyInstance): Promise<void> {
       `;
       const { deleteAssetFiles } = await import('../lib/storage.js');
       for (const row of rows) {
-        // Never delete a file Aperture did not write — an external original is
+        // Never delete a file Platen did not write — an external original is
         // the user's own, and forgetting it is the most we may do.
         await deleteAssetFiles(row.owner_id, row.id, row.storage_path, row.library_id !== null);
       }

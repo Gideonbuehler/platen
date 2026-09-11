@@ -77,7 +77,7 @@ export default function LoginScreen() {
     >
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
-          <Text style={styles.brand}>Aperture</Text>
+          <Text style={styles.brand}>Platen</Text>
           <Text style={styles.tagline}>
             {step === 'server'
               ? 'Connect to your photo server.'

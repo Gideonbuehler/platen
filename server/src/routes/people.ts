@@ -2,7 +2,7 @@ import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import type { Face, FaceStatus, Person } from '@aperture/shared';
+import type { Face, FaceStatus, Person } from '@platen/shared';
 import { config } from '../config.js';
 import { sql } from '../db/index.js';
 import { badRequest, forbidden, notFound } from '../lib/errors.js';

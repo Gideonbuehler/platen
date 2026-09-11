@@ -76,7 +76,7 @@ async function collect(): Promise<{ found: Found[]; problems: string[] }> {
     }
 
     if (sidecar.version !== 1 || !sidecar.assetId || !sidecar.originalFilename) {
-      problems.push(`not an Aperture sidecar: ${sidecarPath}`);
+      problems.push(`not an Platen sidecar: ${sidecarPath}`);
       continue;
     }
 

@@ -1,4 +1,4 @@
-import type { JobType } from '@aperture/shared';
+import type { JobType } from '@platen/shared';
 import { sql } from '../db/index.js';
 
 export interface JobRow {

@@ -1,5 +1,5 @@
 {
-  "name": "aperture",
+  "name": "platen",
   "version": "0.1.0",
   "private": true,
   "description": "Self-hosted photo and video backup for Unraid",
@@ -18,7 +18,7 @@
     "dev:web": "npm run dev -w web",
     "migrate": "npm run migrate -w server",
     "typecheck": "npm run typecheck -w shared && npm run typecheck -w server && npm run typecheck -w web",
-    "docker:build": "docker build -f docker/Dockerfile -t aperture:local .",
+    "docker:build": "docker build -f docker/Dockerfile -t platen:local .",
     "docker:up": "docker compose -f docker/docker-compose.yml up -d",
     "docker:down": "docker compose -f docker/docker-compose.yml down",
     "test": "npm run test -w server"

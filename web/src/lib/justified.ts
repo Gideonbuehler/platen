@@ -1,4 +1,4 @@
-import type { Asset } from '@aperture/shared';
+import type { Asset } from '@platen/shared';
 
 /**
  * Justified ("Flickr-style") row layout.

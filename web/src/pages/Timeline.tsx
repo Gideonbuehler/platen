@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import type { Asset } from '@aperture/shared';
+import type { Asset } from '@platen/shared';
 import { AddToAlbumDialog } from '../components/AddToAlbumDialog';
 import { IconArchive, IconHeart, IconPhotos, IconSpinner, IconTrash } from '../components/Icons';
 import { Lightbox } from '../components/Lightbox';

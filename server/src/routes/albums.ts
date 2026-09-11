@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import type { Album } from '@aperture/shared';
+import type { Album } from '@platen/shared';
 import { sql } from '../db/index.js';
 import { badRequest, forbidden, notFound } from '../lib/errors.js';
 import { assetColumnsWithExif, toAssetDto, type AssetRow } from '../lib/mappers.js';

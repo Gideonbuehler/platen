@@ -11,7 +11,7 @@ import { enqueue } from '../jobs/queue.js';
  * Indexes an existing folder in place.
  *
  * Nothing is copied, moved, renamed or deleted. The files stay exactly where
- * their owner put them and Aperture only records where they are — which is the
+ * their owner put them and Platen only records where they are — which is the
  * whole point: pointing a photo app at a decade of accumulated folders should
  * not require a second copy of them, and must not put them at risk.
  */

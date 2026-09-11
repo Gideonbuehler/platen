@@ -1,4 +1,4 @@
-import type { Asset, AssetExif } from '@aperture/shared';
+import type { Asset, AssetExif } from '@platen/shared';
 
 /** Shape returned by the asset SELECTs across the route layer. */
 export interface AssetRow {

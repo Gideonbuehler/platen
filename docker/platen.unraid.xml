@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <!--
-  Unraid Community Applications template for the Aperture app container.
+  Unraid Community Applications template for the Platen app container.
 
-  This template covers the app only. Aperture also needs a Postgres 17 database
+  This template covers the app only. Platen also needs a Postgres 17 database
   with the pgvector extension — the pgvector/pgvector:pg17 image. Either:
 
     a) run the compose stack in docker/docker-compose.yml with the Compose
@@ -10,11 +10,11 @@
     b) add pgvector/pgvector:pg17 as its own container first, then set
        DATABASE_URL below to point at it.
 
-  Save as: /boot/config/plugins/dockerMan/templates-user/my-aperture.xml
+  Save as: /boot/config/plugins/dockerMan/templates-user/my-platen.xml
 -->
 <Container version="2">
-  <Name>Aperture</Name>
-  <Repository>aperture:latest</Repository>
+  <Name>Platen</Name>
+  <Repository>platen:latest</Repository>
   <Registry/>
   <Network>bridge</Network>
   <MyIP/>
@@ -48,21 +48,21 @@
           Mode="rw" Description="Where original photos and videos are stored. Put this on the array and include it in your backup plan."
           Type="Path" Display="always" Required="true" Mask="false">/mnt/user/photos</Config>
 
-  <Config Name="Thumbnails" Target="/data/thumbs" Default="/mnt/user/appdata/aperture/thumbs"
+  <Config Name="Thumbnails" Target="/data/thumbs" Default="/mnt/user/appdata/platen/thumbs"
           Mode="rw" Description="Generated thumbnails and previews. Regenerable, so cache/SSD is ideal and it does not need backing up."
-          Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/aperture/thumbs</Config>
+          Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/platen/thumbs</Config>
 
-  <Config Name="Upload temp" Target="/data/tmp" Default="/mnt/user/appdata/aperture/tmp"
+  <Config Name="Upload temp" Target="/data/tmp" Default="/mnt/user/appdata/platen/tmp"
           Mode="rw" Description="In-flight uploads. Ideally on the same filesystem as the library, so finished uploads are a rename rather than a copy."
-          Type="Path" Display="advanced" Required="true" Mask="false">/mnt/user/appdata/aperture/tmp</Config>
+          Type="Path" Display="advanced" Required="true" Mask="false">/mnt/user/appdata/platen/tmp</Config>
 
-  <Config Name="ML model cache" Target="/data/ml-cache" Default="/mnt/user/appdata/aperture/ml-cache"
+  <Config Name="ML model cache" Target="/data/ml-cache" Default="/mnt/user/appdata/platen/ml-cache"
           Mode="rw" Description="Cached CLIP weights (about 250 MB), so they are downloaded only once."
-          Type="Path" Display="advanced" Required="false" Mask="false">/mnt/user/appdata/aperture/ml-cache</Config>
+          Type="Path" Display="advanced" Required="false" Mask="false">/mnt/user/appdata/platen/ml-cache</Config>
 
-  <Config Name="DATABASE_URL" Target="DATABASE_URL" Default="postgres://aperture:CHANGEME@aperture-db:5432/aperture"
+  <Config Name="DATABASE_URL" Target="DATABASE_URL" Default="postgres://platen:CHANGEME@platen-db:5432/platen"
           Mode="" Description="Connection string for the pgvector-enabled Postgres container."
-          Type="Variable" Display="always" Required="true" Mask="true">postgres://aperture:CHANGEME@aperture-db:5432/aperture</Config>
+          Type="Variable" Display="always" Required="true" Mask="true">postgres://platen:CHANGEME@platen-db:5432/platen</Config>
 
   <Config Name="JWT_SECRET" Target="JWT_SECRET" Default=""
           Mode="" Description="Secret used to sign login tokens. Generate with: openssl rand -hex 32. Changing it signs everyone out."
@@ -89,7 +89,7 @@
           Type="Variable" Display="advanced" Required="false" Mask="false">30</Config>
 
   <Config Name="REDIS_URL" Target="REDIS_URL" Default=""
-          Mode="" Description="Optional thumbnail cache, e.g. redis://aperture-redis:6379. Caches only regenerable thumbnails, never your originals or the database. Leave blank to serve everything from disk."
+          Mode="" Description="Optional thumbnail cache, e.g. redis://platen-redis:6379. Caches only regenerable thumbnails, never your originals or the database. Leave blank to serve everything from disk."
           Type="Variable" Display="advanced" Required="false" Mask="false"/>
 
   <Config Name="TZ" Target="TZ" Default="UTC"

@@ -1,13 +1,13 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { hash as argonHash, verify as argonVerify } from '@node-rs/argon2';
 import { SignJWT, jwtVerify } from 'jose';
-import type { AuthTokens, User } from '@aperture/shared';
+import type { AuthTokens, User } from '@platen/shared';
 import { ACCESS_TOKEN_TTL_SECONDS, REFRESH_TOKEN_TTL_DAYS, config } from '../config.js';
 import { sql } from '../db/index.js';
 import { unauthorized } from '../lib/errors.js';
 
 const secret = new TextEncoder().encode(config.JWT_SECRET);
-const ISSUER = 'aperture';
+const ISSUER = 'platen';
 
 export interface AccessClaims {
   sub: string;

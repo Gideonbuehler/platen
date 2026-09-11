@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import type { AuthResponse } from '@aperture/shared';
+import type { AuthResponse } from '@platen/shared';
 import { config } from '../config.js';
 import { sql } from '../db/index.js';
 import { badRequest, conflict, forbidden, unauthorized } from '../lib/errors.js';

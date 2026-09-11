@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import type { Asset, Page } from '@aperture/shared';
+import type { Asset, Page } from '@platen/shared';
 import { api } from '../lib/api';
 
 export type TimelineVariant = 'all' | 'favorites' | 'archive' | 'trash';

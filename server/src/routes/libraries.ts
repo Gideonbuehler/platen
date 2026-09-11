@@ -2,7 +2,7 @@ import { readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import type { ExternalLibrary } from '@aperture/shared';
+import type { ExternalLibrary } from '@platen/shared';
 import { config } from '../config.js';
 import { sql } from '../db/index.js';
 import { badRequest, conflict, notFound } from '../lib/errors.js';
@@ -196,7 +196,7 @@ export async function libraryRoutes(app: FastifyInstance): Promise<void> {
   });
 
   /**
-   * Removes the library and everything Aperture recorded about it.
+   * Removes the library and everything Platen recorded about it.
    *
    * The photographs themselves are untouched — this un-indexes, it does not
    * delete. Said plainly in the response because that is the one thing anyone

@@ -41,7 +41,7 @@ export function LoginPage() {
       <main className="login-card">
         <div className="login-brand">
           <IconLogo size={34} />
-          <h1>Aperture</h1>
+          <h1>Platen</h1>
         </div>
 
         <p className="login-tagline">

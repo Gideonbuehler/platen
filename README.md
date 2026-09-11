@@ -1,4 +1,4 @@
-# Aperture
+# Platen
 
 Self-hosted photo and video backup for Unraid, with a mobile app that backs up
 your camera roll automatically.
@@ -9,7 +9,7 @@ shows your photos at their real aspect ratios instead of cropping everything
 into squares.
 
 ```
-aperture/
+platen/
 ├── server/     Fastify API + background job worker (TypeScript)
 ├── web/        React web client, built into the server image
 ├── mobile/     Expo app for iOS and Android
@@ -51,8 +51,8 @@ aperture/
 
 ```bash
 cd /mnt/user/appdata
-git clone <your-repo-url> aperture
-cd aperture
+git clone <your-repo-url> platen
+cd platen
 ```
 
 ### 2. Configure
@@ -74,8 +74,8 @@ PUBLIC_URL=http://tower.local:2283
 # Where the photos actually live — an array share you back up.
 LIBRARY_PATH=/mnt/user/photos
 # Regenerable, so cache/SSD is ideal and it needs no backup.
-THUMBS_PATH=/mnt/user/appdata/aperture/thumbs
-DB_PATH=/mnt/user/appdata/aperture/db
+THUMBS_PATH=/mnt/user/appdata/platen/thumbs
+DB_PATH=/mnt/user/appdata/platen/db
 ```
 
 ### 3. Start it
@@ -88,7 +88,7 @@ Open `http://tower.local:2283`. The first account you create becomes the
 administrator. Self-registration is off by default — invite everyone else from
 **Settings → People**.
 
-> Prefer the Unraid UI? `docker/aperture.unraid.xml` is a Community
+> Prefer the Unraid UI? `docker/platen.unraid.xml` is a Community
 > Applications template for the app container. You still need a
 > `pgvector/pgvector:pg17` container alongside it, so the compose file above is
 > the easier path.
@@ -225,7 +225,7 @@ digest it costs far more than letting the server hash bytes it already receives.
 
 ### Capture times
 
-EXIF `DateTimeOriginal` is bare wall-clock text with no timezone. Aperture
+EXIF `DateTimeOriginal` is bare wall-clock text with no timezone. Platen
 re-anchors it so the time you see always matches the time the camera recorded —
 whether the server runs in UTC and you're in Berlin, or the other way round.
 When a photo does record a UTC offset, that's stored too and used for display.
@@ -302,9 +302,9 @@ embeddings follow behind, so a phone on a slow link is never held open.
 
 ```bash
 npm install
-docker run -d --name aperture-db \
-  -e POSTGRES_USER=aperture -e POSTGRES_PASSWORD=dev \
-  -e POSTGRES_DB=aperture -p 5432:5432 pgvector/pgvector:pg17
+docker run -d --name platen-db \
+  -e POSTGRES_USER=platen -e POSTGRES_PASSWORD=dev \
+  -e POSTGRES_DB=platen -p 5432:5432 pgvector/pgvector:pg17
 
 cp .env.example .env      # point DATABASE_URL at localhost:5432
 npm run dev               # API on :3000, web on :5173
@@ -319,11 +319,11 @@ forward is safer for a system holding irreplaceable data.
 
 ## Backups
 
-Aperture is where your photos live, so it needs a backup of its own:
+Platen is where your photos live, so it needs a backup of its own:
 
 - `/data/library` — the originals. Irreplaceable.
 - The Postgres volume — albums, favourites, share links, EXIF, users.
-  `docker exec aperture-db pg_dump -U aperture aperture | gzip > aperture.sql.gz`
+  `docker exec platen-db pg_dump -U platen platen | gzip > platen.sql.gz`
 - `/data/thumbs` — skip it. Regenerable in one click.
 
 ### If you lose the database
@@ -340,7 +340,7 @@ and Settings shows when it last ran.
 To rebuild from the files alone:
 
 ```bash
-docker exec aperture sh -c 'cd /app/server && node dist/tools/restore-from-sidecars.js'
+docker exec platen sh -c 'cd /app/server && node dist/tools/restore-from-sidecars.js'
 ```
 
 That reports what it found and changes nothing. Add `--apply` to write the rows,

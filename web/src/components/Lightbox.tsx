@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Asset } from '@aperture/shared';
+import type { Asset } from '@platen/shared';
 import { assetDownloadUrl, assetOriginalUrl, assetPreviewUrl } from '../lib/api';
 import { captureWallClock, formatCaptureTime } from '../lib/justified';
 import { useZoomPan } from '../hooks/useZoomPan';

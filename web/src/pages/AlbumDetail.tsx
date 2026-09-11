@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { Asset } from '@aperture/shared';
+import type { Asset } from '@platen/shared';
 import {
   IconAlbums,
   IconChevronLeft,

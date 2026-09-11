@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useParams } from 'react-router-dom';
-import type { Asset } from '@aperture/shared';
+import type { Asset } from '@platen/shared';
 import { IconLogo, IconSpinner } from '../components/Icons';
 import { Lightbox } from '../components/Lightbox';
 import { PhotoGrid } from '../components/PhotoGrid';
@@ -40,7 +40,7 @@ export function SharePage() {
         const result = await api.shareContents(key, candidate);
         setContents(result);
         setRequiresPassword(false);
-        document.title = `${result.title} · Aperture`;
+        document.title = `${result.title} · Platen`;
       } catch (err) {
         const status = (err as { status?: number }).status;
         if (status === 401 || status === 403) {
@@ -66,7 +66,7 @@ export function SharePage() {
         if (info.requiresPassword) {
           setRequiresPassword(true);
           setLoading(false);
-          document.title = `${info.title} · Aperture`;
+          document.title = `${info.title} · Platen`;
           return;
         }
       } catch (err) {
@@ -138,7 +138,7 @@ export function SharePage() {
       <header className="share-header">
         <div className="share-brand">
           <IconLogo size={20} />
-          <span>Aperture</span>
+          <span>Platen</span>
         </div>
         <h1>{contents.title}</h1>
         <p>

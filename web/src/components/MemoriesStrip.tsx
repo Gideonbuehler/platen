@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import type { Asset, Memory } from '@aperture/shared';
+import type { Asset, Memory } from '@platen/shared';
 import { api, assetThumbnailUrl } from '../lib/api';
 import './MemoriesStrip.css';
 

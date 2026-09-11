@@ -211,7 +211,7 @@ export const IconSpinner = ({ size = 20, className }: IconProps) => (
   </svg>
 );
 
-/** The wordmark: an aperture blade ring. */
+/** The wordmark: an platen blade ring. */
 export const IconLogo = ({ size = 26, className }: IconProps) => (
   <svg
     width={size}

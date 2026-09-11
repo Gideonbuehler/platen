@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import type { Asset } from '@aperture/shared';
+import type { Asset } from '@platen/shared';
 import { IconSearch, IconSpinner } from '../components/Icons';
 import { Lightbox } from '../components/Lightbox';
 import { PhotoGrid } from '../components/PhotoGrid';

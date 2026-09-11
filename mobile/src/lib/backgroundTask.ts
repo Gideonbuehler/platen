@@ -2,7 +2,7 @@ import * as BackgroundFetch from 'expo-background-fetch';
 import * as TaskManager from 'expo-task-manager';
 import { getSettings, runBackup } from './backup';
 
-export const BACKUP_TASK = 'aperture-backup';
+export const BACKUP_TASK = 'platen-backup';
 
 /**
  * Background camera-roll backup.

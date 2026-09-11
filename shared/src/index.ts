@@ -1,5 +1,5 @@
 /**
- * Aperture API contract.
+ * Platen API contract.
  *
  * This module is the single source of truth for every shape that crosses the
  * network. The server, the web client and the mobile app all compile against

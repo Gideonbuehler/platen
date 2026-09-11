@@ -1,7 +1,7 @@
-# Aperture — self-hosted photo backup
+# Platen — self-hosted photo backup
 #
 # Unraid quick start:
-#   1. Put this file in /mnt/user/appdata/aperture/
+#   1. Put this file in /mnt/user/appdata/platen/
 #   2. Copy .env.example next to it as .env and fill in the two secrets
 #   3. docker compose up -d
 #
@@ -9,13 +9,13 @@
 # cache storage while the photos themselves live on the array.
 
 services:
-  aperture:
-    # Build locally, or swap for `image: ghcr.io/<you>/aperture:latest`
+  platen:
+    # Build locally, or swap for `image: ghcr.io/<you>/platen:latest`
     build:
       context: ..
       dockerfile: docker/Dockerfile
-    image: aperture:latest
-    container_name: aperture
+    image: platen:latest
+    container_name: platen
     restart: unless-stopped
 
     ports:
@@ -25,7 +25,7 @@ services:
       NODE_ENV: production
       PORT: 3000
       PUBLIC_URL: ${PUBLIC_URL:-http://localhost:2283}
-      DATABASE_URL: postgres://aperture:${POSTGRES_PASSWORD}@aperture-db:5432/aperture
+      DATABASE_URL: postgres://platen:${POSTGRES_PASSWORD}@platen-db:5432/platen
       JWT_SECRET: ${JWT_SECRET}
       ALLOW_REGISTRATION: ${ALLOW_REGISTRATION:-false}
       JOB_CONCURRENCY: ${JOB_CONCURRENCY:-3}
@@ -35,7 +35,7 @@ services:
       FACE_MIN_CLUSTER_SIZE: ${FACE_MIN_CLUSTER_SIZE:-2}
       EXTERNAL_ROOT: /data/external
       # Leave empty to run without Redis and serve everything from disk.
-      REDIS_URL: ${REDIS_URL-redis://aperture-redis:6379}
+      REDIS_URL: ${REDIS_URL-redis://platen-redis:6379}
       EXTERNAL_SCAN_INTERVAL_MINUTES: ${EXTERNAL_SCAN_INTERVAL_MINUTES:-360}
       ML_MODEL: ${ML_MODEL:-Xenova/clip-vit-base-patch32}
       TRASH_RETENTION_DAYS: ${TRASH_RETENTION_DAYS:-30}
@@ -52,15 +52,15 @@ services:
       - ${UPLOAD_TMP_PATH:-./data/tmp}:/data/tmp
       # Downloaded CLIP weights (~250 MB), cached so restarts are instant.
       - ${ML_CACHE_PATH:-./data/ml-cache}:/data/ml-cache
-      # Existing photo folders to index in place. Read-only on purpose: Aperture
+      # Existing photo folders to index in place. Read-only on purpose: Platen
       # never needs to write here, and the mount makes that guarantee at the
       # kernel rather than trusting application code.
       - ${EXTERNAL_PATH:-./data/external}:/data/external:ro
 
     depends_on:
-      aperture-db:
+      platen-db:
         condition: service_healthy
-      aperture-redis:
+      platen-redis:
         # `started`, not `healthy`: the cache is optional and the app must come
         # up and serve from disk even if Redis never does.
         condition: service_started
@@ -76,17 +76,17 @@ services:
       retries: 3
       start_period: 40s
 
-  aperture-db:
+  platen-db:
     # pgvector's image is plain Postgres plus the extension, so it behaves
     # exactly like the official image for backup and upgrade purposes.
     image: pgvector/pgvector:pg17
-    container_name: aperture-db
+    container_name: platen-db
     restart: unless-stopped
 
     environment:
-      POSTGRES_USER: aperture
+      POSTGRES_USER: platen
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: aperture
+      POSTGRES_DB: platen
       # Checksums catch silent corruption early. Worth the small write cost for
       # a database that indexes irreplaceable photos.
       POSTGRES_INITDB_ARGS: "--data-checksums"
@@ -98,7 +98,7 @@ services:
     healthcheck:
       # The database name is passed explicitly; without it pg_isready reports
       # ready while the init scripts are still running on first boot.
-      test: ["CMD-SHELL", "pg_isready -U aperture -d aperture"]
+      test: ["CMD-SHELL", "pg_isready -U platen -d platen"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -110,9 +110,9 @@ services:
 
   # Optional thumbnail cache. Holds only regenerable derivatives — never
   # originals, never the database — so losing it costs speed and nothing else.
-  aperture-redis:
+  platen-redis:
     image: redis:7-alpine
-    container_name: aperture-redis
+    container_name: platen-redis
     restart: unless-stopped
 
     # A hard ceiling with LRU eviction is what makes this safe beside everything

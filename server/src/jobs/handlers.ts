@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import type { JobType } from '@aperture/shared';
+import type { JobType } from '@platen/shared';
 import { config } from '../config.js';
 import { sql } from '../db/index.js';
 import {
