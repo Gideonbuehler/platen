@@ -10,7 +10,8 @@
 
 services:
   platen:
-    # Build locally, or swap for `image: ghcr.io/<you>/platen:latest`
+    # Build locally. To run a published release instead, delete the `build`
+    # block below and set `image: ghcr.io/gideonbuehler/platen:latest`.
     build:
       context: ..
       dockerfile: docker/Dockerfile

@@ -1,5 +1,8 @@
 # Platen
 
+[![CI](https://github.com/Gideonbuehler/platen/actions/workflows/ci.yml/badge.svg)](https://github.com/Gideonbuehler/platen/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 Self-hosted photo and video backup for Unraid, with a mobile app that backs up
 your camera roll automatically.
 
@@ -356,4 +359,17 @@ detection and name the groups again. The tool prints the old names to work from.
 
 ## Licence
 
-MIT.
+MIT. See [LICENSE](LICENSE).
+
+## Releases
+
+Images are published to the GitHub Container Registry when a `v*` tag is
+pushed:
+
+```bash
+docker pull ghcr.io/gideonbuehler/platen:latest
+```
+
+Each release also publishes `X.Y.Z` and `X.Y`, so pinning to a minor version
+picks up patches without ever jumping a minor version unasked. Builds are
+`linux/amd64` only, which is what Unraid runs.

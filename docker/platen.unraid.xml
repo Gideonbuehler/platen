@@ -11,17 +11,21 @@
        DATABASE_URL below to point at it.
 
   Save as: /boot/config/plugins/dockerMan/templates-user/my-platen.xml
+
+  Before submitting to Community Applications, two fields below still need
+  real values: Icon (a publicly hosted PNG, conventionally 128x128) and
+  Support (CA expects a thread on the Unraid forums, not an issue tracker).
 -->
 <Container version="2">
   <Name>Platen</Name>
-  <Repository>platen:latest</Repository>
-  <Registry/>
+  <Repository>ghcr.io/gideonbuehler/platen:latest</Repository>
+  <Registry>https://github.com/Gideonbuehler/platen/pkgs/container/platen</Registry>
   <Network>bridge</Network>
   <MyIP/>
   <Shell>sh</Shell>
   <Privileged>false</Privileged>
-  <Support/>
-  <Project/>
+  <Support>https://github.com/Gideonbuehler/platen/issues</Support>
+  <Project>https://github.com/Gideonbuehler/platen</Project>
   <Overview>
     Self-hosted photo and video backup with automatic upload from iOS and
     Android, a justified timeline, albums, public share links and optional

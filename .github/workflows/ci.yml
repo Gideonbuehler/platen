@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  server-web:
+    name: Server and web
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Shared must be compiled before anything else is checked. The server and
+      # web client import @platen/shared by its built output, so typechecking
+      # them against a missing dist fails with errors that look like the code
+      # is wrong rather than the build order.
+      - name: Build shared types
+        run: npm run build -w shared
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+  mobile:
+    name: Mobile
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Install
+        working-directory: mobile
+        run: npm ci
+
+      - name: Typecheck
+        working-directory: mobile
+        run: npx tsc --noEmit
+
+      # Typechecking is not enough on its own here. The app has twice passed
+      # tsc while being unable to start at all: once with a missing expo-asset,
+      # once after importing a native module that was not in the build. Both
+      # are bundler failures, invisible to the type system, and only an actual
+      # bundle catches them.
+      - name: Bundle
+        working-directory: mobile
+        run: npx expo export --platform android --output-dir /tmp/platen-export
+
+  docker:
+    name: Docker image builds
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Build only, no push. This is the gate that keeps a broken Dockerfile
+      # from being discovered at tag time, when the fix is most annoying.
+      - name: Build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
