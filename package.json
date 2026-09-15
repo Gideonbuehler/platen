@@ -21,7 +21,8 @@
     "docker:build": "docker build -f docker/Dockerfile -t platen:local .",
     "docker:up": "docker compose -f docker/docker-compose.yml up -d",
     "docker:down": "docker compose -f docker/docker-compose.yml down",
-    "test": "npm run test -w server"
+    "test": "npm run test -w server",
+    "brand": "node branding/render.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",

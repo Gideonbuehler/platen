@@ -12,9 +12,8 @@
 
   Save as: /boot/config/plugins/dockerMan/templates-user/my-platen.xml
 
-  Before submitting to Community Applications, two fields below still need
-  real values: Icon (a publicly hosted PNG, conventionally 128x128) and
-  Support (CA expects a thread on the Unraid forums, not an issue tracker).
+  Before submitting to Community Applications, Support still needs a real
+  value: CA expects a thread on the Unraid forums, not an issue tracker.
 -->
 <Container version="2">
   <Name>Platen</Name>
@@ -35,7 +34,7 @@
   <Category>Productivity: MediaApp:Photos</Category>
   <WebUI>http://[IP]:[PORT:3000]/</WebUI>
   <TemplateURL/>
-  <Icon/>
+  <Icon>https://raw.githubusercontent.com/Gideonbuehler/platen/main/branding/platen-mark-512.png</Icon>
   <ExtraParams/>
   <PostArgs/>
   <CPUset/>

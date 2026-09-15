@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="192 192 640 640">
+  <defs><linearGradient id="ember" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#ffac5f"/><stop offset="1" stop-color="#e3731c"/>
+  </linearGradient></defs>
+  <path d="M340 192 H684 A148 148 0 0 1 832 340 V684 A148 148 0 0 1 684 832 H340 A148 148 0 0 1 192 684 V340 A148 148 0 0 1 340 192 Z M313 300 H349 A22 22 0 0 1 371 322 V702 A22 22 0 0 1 349 724 H313 A22 22 0 0 1 291 702 V322 A22 22 0 0 1 313 300 Z M465 300 H643 A66 66 0 0 1 709 366 V494 A66 66 0 0 1 643 560 H465 A66 66 0 0 1 399 494 V366 A66 66 0 0 1 465 300 Z M489 380 H619 A10 10 0 0 1 629 390 V470 A10 10 0 0 1 619 480 H489 A10 10 0 0 1 479 470 V390 A10 10 0 0 1 489 380 Z" fill="url(#ember)" fill-rule="evenodd"/>
+</svg>

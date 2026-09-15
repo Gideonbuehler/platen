@@ -212,22 +212,26 @@ export const IconSpinner = ({ size = 20, className }: IconProps) => (
 );
 
 /** The wordmark: an platen blade ring. */
+/**
+ * The Platen mark: a plate with a split P knocked out of it, a bar for the
+ * plate and a frame for the film pressed against it.
+ *
+ * Filled with currentColor so each page's CSS decides the colour, which is
+ * var(--accent) everywhere it appears today. The path is copied from
+ * branding/render.mjs; change it there and regenerate, then update this.
+ */
 export const IconLogo = ({ size = 26, className }: IconProps) => (
   <svg
     width={size}
     height={size}
-    viewBox="0 0 24 24"
-    fill="none"
+    viewBox="192 192 640 640"
     className={className}
     aria-hidden="true"
   >
-    <circle cx="12" cy="12" r="9.2" stroke="currentColor" strokeWidth="1.6" />
     <path
-      d="M12 2.8 7.4 10.8M21.2 12h-9.2M16.6 20.4 12 12.4M2.8 12h9.2M7.4 20.4 12 12.4M16.6 3.6 12 11.6"
-      stroke="currentColor"
-      strokeWidth="1.4"
-      strokeLinecap="round"
-      opacity="0.85"
+      fill="currentColor"
+      fillRule="evenodd"
+      d="M340 192 H684 A148 148 0 0 1 832 340 V684 A148 148 0 0 1 684 832 H340 A148 148 0 0 1 192 684 V340 A148 148 0 0 1 340 192 Z M313 300 H349 A22 22 0 0 1 371 322 V702 A22 22 0 0 1 349 724 H313 A22 22 0 0 1 291 702 V322 A22 22 0 0 1 313 300 Z M465 300 H643 A66 66 0 0 1 709 366 V494 A66 66 0 0 1 643 560 H465 A66 66 0 0 1 399 494 V366 A66 66 0 0 1 465 300 Z M489 380 H619 A10 10 0 0 1 629 390 V470 A10 10 0 0 1 619 480 H489 A10 10 0 0 1 479 470 V390 A10 10 0 0 1 489 380 Z"
     />
   </svg>
 );

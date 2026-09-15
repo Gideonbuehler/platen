@@ -10,6 +10,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { api, normaliseServerUrl, setServerUrl } from '../src/lib/api';
 import { deviceLabel, useSession } from '../src/lib/session';
 import { fontSize, radius, spacing } from '../src/lib/theme';
@@ -77,7 +78,15 @@ export default function LoginScreen() {
     >
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
-          <Text style={styles.brand}>Platen</Text>
+          <View style={styles.brandRow}>
+            <Image
+              source={require('../assets/mark.png')}
+              style={styles.mark}
+              contentFit="contain"
+              accessibilityIgnoresInvertColors
+            />
+            <Text style={styles.brand}>Platen</Text>
+          </View>
           <Text style={styles.tagline}>
             {step === 'server'
               ? 'Connect to your photo server.'
@@ -198,6 +207,8 @@ const makeStyles = (p: ReturnType<typeof useSession>['palette']) =>
     root: { flex: 1, backgroundColor: p.surfaceBase },
     scroll: { flexGrow: 1, justifyContent: 'center', padding: spacing.xl },
     header: { marginBottom: spacing.xxl },
+    brandRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+    mark: { width: 40, height: 40 },
     brand: {
       fontSize: fontSize.xxl,
       fontWeight: '700',

@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="branding/platen-mark.svg" width="112" alt="Platen">
+</p>
+
 # Platen
 
 [![CI](https://github.com/Gideonbuehler/platen/actions/workflows/ci.yml/badge.svg)](https://github.com/Gideonbuehler/platen/actions/workflows/ci.yml)
@@ -356,6 +360,20 @@ cannot come back this way — the embeddings are not in the sidecars — so re-r
 detection and name the groups again. The tool prints the old names to work from.
 
 ---
+
+## Branding
+
+The mark is a split P: a bar for the plate and a separate frame for the film
+pressed against it, with a 3:2 opening, the proportions of a 35mm frame. Every
+icon (app, adaptive, themed, splash, favicon, the Unraid template's) is
+generated from one set of coordinates in `branding/render.mjs`:
+
+```bash
+npm run brand
+```
+
+Change the geometry there and regenerate rather than editing the PNGs. The web
+logo in `web/src/components/Icons.tsx` carries a copy of the same path.
 
 ## Licence
 
