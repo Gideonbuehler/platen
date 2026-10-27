@@ -45,7 +45,8 @@ FROM node:22-bookworm-slim AS runtime
 # RAW at all, so without this every .ARW/.CR3/.NEF uploads fine and then fails
 # to produce a thumbnail.
 # tini reaps zombies and forwards SIGTERM so graceful shutdown actually works
-# when Unraid stops the container.
+# when Unraid stops the container. setpriv, which the entrypoint uses to drop
+# root, comes with util-linux in the base image.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ffmpeg \
       libvips42 \
@@ -56,11 +57,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
+# PUID/PGID: the user the server runs as. 99:100 is Unraid's nobody:users,
+# which owns everything on its shares.
 ENV NODE_ENV=production \
     PORT=3000 \
     LIBRARY_PATH=/data/library \
     THUMBS_PATH=/data/thumbs \
-    UPLOAD_TMP_PATH=/data/tmp
+    UPLOAD_TMP_PATH=/data/tmp \
+    PUID=99 \
+    PGID=100
 
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
@@ -70,6 +75,7 @@ COPY --from=builder /app/server/dist ./server/dist
 COPY --from=builder /app/server/package.json ./server/package.json
 COPY --from=builder /app/server/migrations ./server/migrations
 COPY --from=builder /app/server/public ./server/public
+COPY --chmod=0755 docker/entrypoint.sh /usr/local/bin/platen-entrypoint
 
 # The data volume is created by the compose file / Unraid mapping. Making it a
 # VOLUME here documents the intent and prevents writes into the image layer.
@@ -82,5 +88,7 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/api/server/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
-ENTRYPOINT ["/usr/bin/tini", "--"]
+# Starts as root only long enough to hand the data folders to PUID:PGID, then
+# runs the server as that user.
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/platen-entrypoint"]
 CMD ["node", "server/dist/index.js"]

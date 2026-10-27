@@ -7,20 +7,34 @@ declare module 'fastify' {
     /** Populated by `requireAuth`. Absent on public routes. */
     auth?: { userId: string; isAdmin: boolean };
   }
+
+  interface FastifyContextConfig {
+    /**
+     * Accept the access token as `?token=`. Only for media a browser or
+     * native player loads directly — see `MEDIA_ROUTE`.
+     */
+    allowQueryToken?: boolean;
+  }
 }
 
 /**
- * Accepts `Authorization: Bearer <jwt>`, and — only for media GETs — a
- * `?token=` query parameter. The query fallback exists because `<img>` and
- * native video players cannot attach headers; those routes are read-only and
- * the token is short-lived.
+ * Route options for media that `<img>`, `<video>` and native players load by
+ * URL. They cannot attach headers, so these routes alone take the token from
+ * the query string. Everywhere else a token in a URL is refused: URLs end up
+ * in logs, history and Referer headers, and a GET like /api/auth/sessions has
+ * no reason to accept one.
  */
+export const MEDIA_ROUTE = { config: { allowQueryToken: true } } as const;
+
+/** Accepts `Authorization: Bearer <jwt>`, and on media routes `?token=`. */
 function extractToken(request: FastifyRequest): string | null {
   const header = request.headers.authorization;
   if (header?.startsWith('Bearer ')) return header.slice(7);
 
-  const q = (request.query as Record<string, unknown> | undefined)?.token;
-  if (typeof q === 'string' && q.length > 0 && request.method === 'GET') return q;
+  if (request.method === 'GET' && request.routeOptions.config?.allowQueryToken) {
+    const q = (request.query as Record<string, unknown> | undefined)?.token;
+    if (typeof q === 'string' && q.length > 0) return q;
+  }
 
   return null;
 }

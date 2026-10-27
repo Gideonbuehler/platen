@@ -1,5 +1,4 @@
 import { readdir, stat } from 'node:fs/promises';
-import { join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { ExternalLibrary } from '@platen/shared';

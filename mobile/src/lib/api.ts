@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
+import { normaliseServerUrl } from './url';
 import type {
   Album,
   Asset,
@@ -45,13 +46,7 @@ export class ApiError extends Error {
 
 let cachedServerUrl: string | null = null;
 
-/** Normalises what people type: adds a scheme, strips a trailing slash. */
-export function normaliseServerUrl(input: string): string {
-  let url = input.trim();
-  if (!url) return url;
-  if (!/^https?:\/\//i.test(url)) url = `http://${url}`;
-  return url.replace(/\/+$/, '');
-}
+export { normaliseServerUrl };
 
 export async function getServerUrl(): Promise<string | null> {
   if (cachedServerUrl) return cachedServerUrl;
@@ -120,7 +115,14 @@ async function refreshTokens(): Promise<string | null> {
       if (!response.ok) {
         // Only clear on an explicit rejection. A 5xx or a captive-portal
         // response should not sign someone out of their own server.
-        if (response.status === 401 || response.status === 403) await writeTokens(null);
+        if (response.status === 401 || response.status === 403) {
+          // The server honours a refresh token exactly once. If the backup
+          // task's runtime rotated it a moment earlier, its new pair is
+          // already stored, and is the one to use.
+          const current = await readTokens();
+          if (current && current.refresh !== tokens.refresh) return current.access;
+          await writeTokens(null);
+        }
         return null;
       }
 

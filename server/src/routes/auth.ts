@@ -28,13 +28,19 @@ const registration = credentials.extend({
   name: z.string().min(1, 'Name is required').max(120),
 });
 
+/**
+ * Per-address budget for the endpoints that check a password. Generous for a
+ * person mistyping, useless to a script working through a wordlist.
+ */
+const PASSWORD_ATTEMPTS = { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } };
+
 export async function authRoutes(app: FastifyInstance): Promise<void> {
   /**
    * First-run bootstrap. The very first account created on a fresh server
    * becomes the admin and is always allowed, regardless of ALLOW_REGISTRATION —
    * otherwise a locked-down install could never be set up at all.
    */
-  app.post('/register', async (request, reply) => {
+  app.post('/register', PASSWORD_ATTEMPTS, async (request, reply) => {
     const body = registration.parse(request.body);
 
     const counts = await sql<{ count: number }[]>`SELECT COUNT(*)::int AS count FROM users`;
@@ -61,7 +67,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     return reply.code(201).send(response);
   });
 
-  app.post('/login', async (request) => {
+  app.post('/login', PASSWORD_ATTEMPTS, async (request) => {
     const body = credentials.parse(request.body);
 
     const rows = await sql<(UserRow & { password_hash: string })[]>`

@@ -6,9 +6,10 @@ import type { Face, FaceStatus, Person } from '@platen/shared';
 import { config } from '../config.js';
 import { sql } from '../db/index.js';
 import { badRequest, forbidden, notFound } from '../lib/errors.js';
+import { queryBoolean } from '../lib/query.js';
 import { assetColumnsWithExif, toAssetDto, type AssetRow } from '../lib/mappers.js';
 import { thumbsPath } from '../lib/storage.js';
-import { auth, requireAuth } from '../middleware/auth.js';
+import { auth, MEDIA_ROUTE, requireAuth } from '../middleware/auth.js';
 import { mergePeople } from '../services/clustering.js';
 import { getFaceStatus } from '../services/faces.js';
 import { enqueueMany } from '../jobs/queue.js';
@@ -95,7 +96,7 @@ export async function peopleRoutes(app: FastifyInstance): Promise<void> {
   app.get('/', async (request) => {
     const { userId } = auth(request);
     const { includeHidden } = z
-      .object({ includeHidden: z.coerce.boolean().default(false) })
+      .object({ includeHidden: queryBoolean.default('false') })
       .parse(request.query);
 
     const rows = await sql<PersonRow[]>`
@@ -262,7 +263,7 @@ export async function peopleRoutes(app: FastifyInstance): Promise<void> {
   });
 
   /** The cropped face image used as an avatar. */
-  app.get('/faces/:faceId/thumbnail', async (request, reply) => {
+  app.get('/faces/:faceId/thumbnail', MEDIA_ROUTE, async (request, reply) => {
     const { userId } = auth(request);
     const { faceId } = z.object({ faceId: z.string().uuid() }).parse(request.params);
 

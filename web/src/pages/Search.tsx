@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { Asset } from '@platen/shared';
 import { IconSearch, IconSpinner } from '../components/Icons';
@@ -45,7 +45,7 @@ export function SearchPage() {
     enabled: query.length > 0,
   });
 
-  const assets = results ?? [];
+  const assets = useMemo(() => results ?? [], [results]);
 
   const openAt = useCallback(
     (asset: Asset) => setLightboxIndex(assets.findIndex((a) => a.id === asset.id)),

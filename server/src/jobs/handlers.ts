@@ -10,6 +10,7 @@ import {
   externalRootPath,
   originalPathFor,
   relocateOriginal,
+  removeUserDirectories,
   thumbDir,
   thumbsPath,
 } from '../lib/storage.js';
@@ -274,6 +275,49 @@ async function handleTrashPurge(): Promise<void> {
   // where ON CONFLICT DO NOTHING caps it at a single outstanding job.
 }
 
+/** Rows read per batch, and batches per run before handing on to a fresh job. */
+const FILE_PURGE_BATCH = 500;
+const FILE_PURGE_BATCHES_PER_RUN = 10;
+
+/**
+ * Deletes files whose rows are already gone — today, a deleted user's.
+ *
+ * Bounded per run so a large library cannot hold one job past the stale-job
+ * threshold; a follow-up job picks up the rest. Re-running is harmless: every
+ * removal tolerates a file that is already gone, and a row only leaves the
+ * table after its files have.
+ */
+async function handleFilePurge(): Promise<void> {
+  for (let batch = 0; batch < FILE_PURGE_BATCHES_PER_RUN; batch++) {
+    const rows = await sql<
+      { id: string; owner_id: string; asset_id: string; storage_path: string; is_external: boolean }[]
+    >`
+      SELECT id, owner_id, asset_id, storage_path, is_external
+      FROM file_deletions ORDER BY id LIMIT ${FILE_PURGE_BATCH}
+    `;
+    if (rows.length === 0) return;
+
+    for (const row of rows) {
+      await deleteAssetFiles(row.owner_id, row.asset_id, row.storage_path, row.is_external);
+    }
+    await sql`DELETE FROM file_deletions WHERE id = ANY(${rows.map((row) => row.id)}::bigint[])`;
+
+    // Tidy an owner's folders once nothing more is queued for them, and never
+    // for an account that still exists.
+    for (const ownerId of new Set(rows.map((row) => row.owner_id))) {
+      const [state] = await sql<{ alive: boolean; pending: boolean }[]>`
+        SELECT EXISTS (SELECT 1 FROM users WHERE id = ${ownerId}) AS alive,
+               EXISTS (SELECT 1 FROM file_deletions WHERE owner_id = ${ownerId}) AS pending
+      `;
+      if (state && !state.alive && !state.pending) await removeUserDirectories(ownerId);
+    }
+  }
+
+  // Out of budget with work left. No dedupe key: this job still holds the
+  // shared one until it returns.
+  const more = await sql`SELECT 1 FROM file_deletions LIMIT 1`;
+  if (more.length > 0) await enqueue('file-purge');
+}
 
 /**
  * Finds faces in an asset and groups them with people already known.
@@ -389,6 +433,8 @@ export async function runJob(type: JobType, payload: Record<string, unknown>): P
     }
     case 'trash-purge':
       return handleTrashPurge();
+    case 'file-purge':
+      return handleFilePurge();
     case 'sidecar':
       if (!assetId) throw new Error('sidecar job requires assetId');
       await writeSidecar(assetId);

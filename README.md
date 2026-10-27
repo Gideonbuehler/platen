@@ -11,9 +11,9 @@ Self-hosted photo and video backup for Unraid, with a mobile app that backs up
 your camera roll automatically.
 
 An alternative to Immich that is deliberately lighter to run and nicer to look
-at: two containers instead of four, no Redis, and a justified timeline that
-shows your photos at their real aspect ratios instead of cropping everything
-into squares.
+at: two required containers instead of four, Redis as an optional cache rather
+than a dependency, and a justified timeline that shows your photos at their
+real aspect ratios instead of cropping everything into squares.
 
 ```
 platen/
@@ -39,7 +39,8 @@ platen/
   embeds, extracted with exiftool. You get a real thumbnail and the untouched
   original.
 - **Albums and sharing** — share with another account on your server, or mint a
-  public link with an optional password and expiry.
+  public link with an optional password and expiry. A public link shows only
+  your own photos, never ones a collaborator added to the album.
 - **Natural-language search** — CLIP embeddings in pgvector, so "beach at
   sunset" finds the photo without you ever having tagged it. Optional.
 - **People** — faces are detected, grouped, and named. Off by default; turn on
@@ -49,6 +50,8 @@ platen/
 - **Trash** — deletes are recoverable for 30 days before the bytes are removed.
 - **Optional Redis cache** — keeps thumbnails in RAM. Measured ~5x faster to
   serve, and 7x better at the 95th percentile, which is what smooths scrolling.
+  The compose file runs it by default; drop the service and blank `REDIS_URL`
+  for a two-container install.
 
 ---
 
@@ -94,6 +97,13 @@ docker compose -f docker/docker-compose.yml up -d
 Open `http://tower.local:2283`. The first account you create becomes the
 administrator. Self-registration is off by default — invite everyone else from
 **Settings → People**.
+
+The server runs as `PUID:PGID` (99:100, Unraid's `nobody:users`, unless you
+set otherwise), so the files it writes belong to the same owner as everything
+else on your shares. Earlier builds ran as root: on the first start after
+upgrading, the container hands the library, thumbnail and temp folders to that
+user. That is a one-off recursive `chown`, so a large library on spinning disks
+can take a few minutes to come up that once.
 
 > Prefer the Unraid UI? `docker/platen.unraid.xml` is a Community
 > Applications template for the app container. You still need a
@@ -192,10 +202,12 @@ same way — with a foreground sync.
 | `JOB_CONCURRENCY` | `3` | Thumbnails/embeddings processed at once. Roughly one per core you'll spare. |
 | `TRASH_RETENTION_DAYS` | `30` | How long deleted photos stay recoverable. |
 | `MAX_UPLOAD_BYTES` | 8 GiB | Ceiling on a single file. |
-| `REDIS_URL` | _(empty)_ | Optional thumbnail cache. Empty means no Redis and everything is served from disk. |
+| `REDIS_URL` | `redis://platen-redis:6379` in the compose file, empty otherwise | Optional thumbnail cache. Empty means no Redis and everything is served from disk. |
 | `REDIS_MAX_MEMORY` | `512mb` | Hard ceiling on the Redis container. It evicts the coldest thumbnails rather than growing. |
 | `REDIS_TTL_SECONDS` | 7 days | How long a cached thumbnail lives. |
 | `EXTERNAL_ROOT` | `/data/external` | Every external library must live under this path. |
+| `PUID` / `PGID` | `99` / `100` | User and group the server runs as, and so the owner of every file it writes. 99:100 is Unraid's `nobody:users`; elsewhere use the owner of your photo folders. |
+| `TRUST_PROXY` | `loopback,linklocal,uniquelocal` | Which peers may report the client's IP in `X-Forwarded-For`. The default trusts a reverse proxy on the same host or LAN. `true` trusts everyone, which lets any client dodge the login rate limit. |
 
 ---
 
@@ -317,7 +329,24 @@ cp .env.example .env      # point DATABASE_URL at localhost:5432
 npm run dev               # API on :3000, web on :5173
 ```
 
-`npm run typecheck` covers all three TypeScript projects. Migrations in
+`npm run typecheck` covers all three TypeScript projects, `npm run lint` all
+four (the mobile app included), and `npm test` runs the unit tests; the mobile
+app has its own under `cd mobile && npm test`. The integration tests drive the real API against a real
+Postgres, so they need a database they are allowed to wipe:
+
+```bash
+docker run -d --name platen-test-db -e POSTGRES_USER=platen \
+  -e POSTGRES_PASSWORD=dev -e POSTGRES_DB=platen_test -p 5433:5432 \
+  pgvector/pgvector:pg17
+
+TEST_DATABASE_URL=postgres://platen:dev@localhost:5433/platen_test \
+  npm run test:integration
+```
+
+Every test file drops and recreates that database's schema, so never point
+`TEST_DATABASE_URL` at a database you care about.
+
+Migrations in
 `server/migrations/` are numbered, applied in order inside a transaction, and
 recorded in `schema_migrations`; there are no down migrations, because rolling
 forward is safer for a system holding irreplaceable data.

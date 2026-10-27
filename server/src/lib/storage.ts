@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { createReadStream, createWriteStream } from 'node:fs';
-import { mkdir, rename, rm, rmdir, stat } from 'node:fs/promises';
+import { constants, createReadStream, createWriteStream } from 'node:fs';
+import { access, mkdir, readdir, rename, rm, rmdir, stat } from 'node:fs/promises';
 import { dirname, extname, join, normalize, resolve, sep } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import type { Readable } from 'node:stream';
@@ -25,9 +25,24 @@ export async function ensureStorageDirs(): Promise<void> {
     mkdir(config.THUMBS_PATH, { recursive: true }),
     mkdir(config.UPLOAD_TMP_PATH, { recursive: true }),
     // Created even when unused, so the browse endpoint has something to list
-    // and the volume mapping is obvious from inside the container.
-    mkdir(config.EXTERNAL_ROOT, { recursive: true }),
+    // and the volume mapping is obvious from inside the container. Its mount
+    // is read-only, which is why it is not in the writability check below.
+    mkdir(config.EXTERNAL_ROOT, { recursive: true }).catch(() => {}),
   ]);
+
+  // Existing is not enough: a folder the server cannot write accepts no
+  // uploads, and finding that out from a phone's failed backup is too late.
+  for (const dir of [config.LIBRARY_PATH, config.THUMBS_PATH, config.UPLOAD_TMP_PATH]) {
+    try {
+      await access(dir, constants.W_OK);
+    } catch {
+      const who = typeof process.getuid === 'function' ? ` (running as uid ${process.getuid()})` : '';
+      throw new Error(
+        `Cannot write to ${dir}${who}. Give that folder to the user Platen runs as, ` +
+          'or set PUID/PGID to the owner of your shares.',
+      );
+    }
+  }
 }
 
 /**
@@ -148,6 +163,17 @@ export async function discardUpload(tmpPath: string): Promise<void> {
 }
 
 /**
+ * Takes a just-committed original back out of the library, for an upload
+ * whose row could not be written. Removes the date folders too if the file
+ * was the first in them.
+ */
+export async function discardOriginal(relativeStoragePath: string): Promise<void> {
+  const path = libraryPath(relativeStoragePath);
+  await rm(path, { force: true });
+  await pruneEmptyParents(dirname(path));
+}
+
+/**
  * Moves an original into a different date bucket.
  *
  * Uploads are filed under the capture time the client supplied, which is only a
@@ -265,6 +291,38 @@ export async function deleteAssetFiles(
     await rm(libraryPath(sidecarRelativePath(relativeStoragePath)), { force: true });
   }
   await rm(thumbsPath(thumbDir(userId, assetId)), { recursive: true, force: true });
+}
+
+/**
+ * Removes what is left of a deleted user's directories once their files are
+ * gone.
+ *
+ * Derivatives are all regenerable, so the user's thumbnail folder goes
+ * wholesale. The library folder is only ever emptied of directories: anything
+ * still in it is a file nobody recorded, and on a photo server an unexplained
+ * file is kept rather than guessed about.
+ */
+export async function removeUserDirectories(userId: string): Promise<void> {
+  if (!/^[0-9a-f-]{36}$/i.test(userId)) throw new Error(`Not a user id: ${userId}`);
+  await rm(thumbsPath(userId), { recursive: true, force: true });
+  await removeEmptyDirectories(libraryPath(userId));
+}
+
+async function removeEmptyDirectories(dir: string): Promise<void> {
+  let entries;
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch {
+    return; // already gone
+  }
+  for (const entry of entries) {
+    if (entry.isDirectory()) await removeEmptyDirectories(join(dir, entry.name));
+  }
+  try {
+    await rmdir(dir);
+  } catch {
+    /* still holds something */
+  }
 }
 
 export async function fileSize(path: string): Promise<number | null> {

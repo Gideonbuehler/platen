@@ -95,6 +95,18 @@
           Mode="" Description="Optional thumbnail cache, e.g. redis://platen-redis:6379. Caches only regenerable thumbnails, never your originals or the database. Leave blank to serve everything from disk."
           Type="Variable" Display="advanced" Required="false" Mask="false"/>
 
+  <Config Name="PUID" Target="PUID" Default="99"
+          Mode="" Description="User the server runs as, and so the owner of every file it writes. 99 is Unraid's nobody, which owns everything on your shares."
+          Type="Variable" Display="advanced" Required="true" Mask="false">99</Config>
+
+  <Config Name="PGID" Target="PGID" Default="100"
+          Mode="" Description="Group the server runs as. 100 is Unraid's users group."
+          Type="Variable" Display="advanced" Required="true" Mask="false">100</Config>
+
+  <Config Name="TRUST_PROXY" Target="TRUST_PROXY" Default="loopback,linklocal,uniquelocal"
+          Mode="" Description="Which addresses may report the real client IP in X-Forwarded-For. The default trusts a reverse proxy on the LAN. Use true only if every request reaches Platen through a proxy you control."
+          Type="Variable" Display="advanced" Required="false" Mask="false">loopback,linklocal,uniquelocal</Config>
+
   <Config Name="TZ" Target="TZ" Default="UTC"
           Mode="" Description="Container timezone. Capture times come from each photo's own EXIF, so this only affects log timestamps."
           Type="Variable" Display="advanced" Required="false" Mask="false">UTC</Config>

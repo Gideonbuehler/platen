@@ -167,9 +167,17 @@ export async function serverRoutes(app: FastifyInstance): Promise<void> {
     `;
     if ((admins?.count ?? 0) === 0) throw badRequest('You cannot delete the last administrator.');
 
-    // ON DELETE CASCADE clears the rows; the files are swept by the purge job
-    // because every asset row goes with the user.
-    await sql`DELETE FROM users WHERE id = ${id}`;
+    // ON DELETE CASCADE takes every asset row with the user, and with them the
+    // only record of where the files are. So the paths are copied out first,
+    // in the same transaction, for the file-purge job to remove from disk.
+    await sql.begin(async (tx) => {
+      await tx`
+        INSERT INTO file_deletions (owner_id, asset_id, storage_path, is_external)
+        SELECT owner_id, id, storage_path, library_id IS NOT NULL FROM assets WHERE owner_id = ${id}
+      `;
+      await tx`DELETE FROM users WHERE id = ${id}`;
+    });
+    await enqueue('file-purge', {}, 'file-purge');
     return reply.code(204).send();
   });
 

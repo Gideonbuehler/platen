@@ -9,6 +9,7 @@
     "ios": "expo run:ios",
     "prebuild": "expo prebuild",
     "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test \"src/**/*.test.ts\"",
     "doctor": "npx expo-doctor"
   },
   "dependencies": {
@@ -38,6 +39,7 @@
   },
   "devDependencies": {
     "@types/react": "~18.3.12",
+    "tsx": "^4.23.15",
     "typescript": "~5.3.3"
   }
 }
