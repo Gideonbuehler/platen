@@ -41,6 +41,13 @@ services:
       ML_MODEL: ${ML_MODEL:-Xenova/clip-vit-base-patch32}
       TRASH_RETENTION_DAYS: ${TRASH_RETENTION_DAYS:-30}
       TZ: ${TZ:-UTC}
+      # The user Platen runs as and writes files as. 99:100 is Unraid's
+      # nobody:users; elsewhere use the owner of your photo folders (`id -u`).
+      PUID: ${PUID:-99}
+      PGID: ${PGID:-100}
+      # Which addresses may report a client's IP in X-Forwarded-For. The
+      # default trusts a reverse proxy on this machine or the LAN.
+      TRUST_PROXY: ${TRUST_PROXY:-loopback,linklocal,uniquelocal}
 
     volumes:
       # Originals. Point this at the array share you actually want backed up.

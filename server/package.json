@@ -9,8 +9,9 @@
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
     "migrate": "tsx src/db/migrate.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json",
     "test": "node --import tsx --test \"src/**/*.test.ts\"",
+    "test:integration": "node --import tsx --test --test-concurrency=1 \"test/integration/*.test.ts\"",
     "restore": "tsx src/tools/restore-from-sidecars.ts"
   },
   "dependencies": {

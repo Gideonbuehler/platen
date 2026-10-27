@@ -1,6 +1,8 @@
 node_modules/
 dist/
 build/
+# The web client's build output; `npm run build` regenerates it.
+server/public/
 .env
 .env.local
 *.log

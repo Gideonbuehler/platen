@@ -45,6 +45,39 @@ export async function verifyAccessToken(token: string): Promise<AccessClaims> {
   }
 }
 
+/**
+ * Share tokens prove that someone already entered a share link's password.
+ *
+ * Images load through <img> and <video>, which cannot send the password
+ * header, so the share page swaps the password for one of these once and puts
+ * it in media URLs. A separate issuer keeps the two kinds of token apart: an
+ * access token is refused here, and a share token is refused as a login.
+ */
+const SHARE_ISSUER = 'platen-share';
+const SHARE_TOKEN_TTL_SECONDS = 12 * 60 * 60;
+
+export async function signShareToken(shareId: string, shareExpiresAt: Date | null): Promise<string> {
+  const ttlEnd = Date.now() + SHARE_TOKEN_TTL_SECONDS * 1000;
+  const expiresAt = shareExpiresAt ? Math.min(ttlEnd, shareExpiresAt.getTime()) : ttlEnd;
+  return new SignJWT({})
+    .setProtectedHeader({ alg: 'HS256' })
+    .setSubject(shareId)
+    .setIssuer(SHARE_ISSUER)
+    .setIssuedAt()
+    .setExpirationTime(Math.floor(expiresAt / 1000))
+    .sign(secret);
+}
+
+/** True only for an unexpired token minted for this very share. */
+export async function verifyShareToken(token: string, shareId: string): Promise<boolean> {
+  try {
+    const { payload } = await jwtVerify(token, secret, { issuer: SHARE_ISSUER, subject: shareId });
+    return payload.sub === shareId;
+  } catch {
+    return false;
+  }
+}
+
 const hashToken = (token: string) => createHash('sha256').update(token).digest('hex');
 
 /**
@@ -74,24 +107,29 @@ export async function issueTokens(
 
 /**
  * Exchanges a refresh token for a new pair and revokes the old one (rotation).
- * A replayed token is rejected because its row is already marked revoked.
+ *
+ * Claiming the token and revoking it are one statement. As a read followed by
+ * a separate write, two requests presenting the same token at the same moment
+ * could both pass the read and both walk away with a fresh pair — a stolen
+ * token raced against its owner would survive rotation.
  */
 export async function rotateRefreshToken(refreshToken: string): Promise<AuthTokens> {
   const tokenHash = hashToken(refreshToken);
 
-  const rows = await sql<{ id: string; user_id: string; is_admin: boolean; device_name: string | null }[]>`
-    SELECT rt.id, rt.user_id, rt.device_name, u.is_admin
-    FROM refresh_tokens rt
-    JOIN users u ON u.id = rt.user_id
-    WHERE rt.token_hash = ${tokenHash}
+  const rows = await sql<{ user_id: string; is_admin: boolean; device_name: string | null }[]>`
+    UPDATE refresh_tokens rt
+    SET revoked_at = now(), last_used_at = now()
+    FROM users u
+    WHERE u.id = rt.user_id
+      AND rt.token_hash = ${tokenHash}
       AND rt.revoked_at IS NULL
       AND rt.expires_at > now()
+    RETURNING rt.user_id, rt.device_name, u.is_admin
   `;
 
   const row = rows[0];
   if (!row) throw unauthorized('Your session has expired. Please sign in again.');
 
-  await sql`UPDATE refresh_tokens SET revoked_at = now() WHERE id = ${row.id}`;
   return issueTokens(row.user_id, row.is_admin, row.device_name ?? undefined);
 }
 

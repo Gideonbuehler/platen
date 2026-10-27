@@ -1,16 +1,15 @@
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
-import { createReadStream } from 'node:fs';
-import { stat } from 'node:fs/promises';
-import type { FastifyInstance, FastifyReply } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { ShareLink } from '@platen/shared';
 import { sql } from '../db/index.js';
 import { badRequest, forbidden, notFound, unauthorized } from '../lib/errors.js';
 import { assetColumnsWithExif, toAssetDto, type AssetRow } from '../lib/mappers.js';
+import { sendFile } from '../lib/send-file.js';
 import { externalRootPath, libraryPath, originalPathFor, thumbDir, thumbsPath } from '../lib/storage.js';
 import { auth, requireAuth } from '../middleware/auth.js';
-import { hashPassword, verifyPassword } from '../services/auth.js';
+import { hashPassword, signShareToken, verifyPassword, verifyShareToken } from '../services/auth.js';
 
 interface ShareRow {
   id: string;
@@ -38,13 +37,11 @@ const toShareDto = (row: ShareRow): ShareLink => ({
 });
 
 /**
- * Resolves a public key to a live share.
+ * Resolves a public key to a live share, without checking any password.
  *
- * Password-protected links use a header rather than a cookie so the same
- * endpoint works from the web viewer and from a `curl` download without any
- * session machinery.
+ * Same message for "wrong key" and "expired" so a link cannot be probed.
  */
-async function resolveShare(key: string, password?: string): Promise<ShareRow> {
+async function findShare(key: string): Promise<ShareRow> {
   const rows = await sql<ShareRow[]>`
     SELECT id, key, owner_id, album_id, asset_id, password_hash, allow_download,
            expires_at, view_count, created_at
@@ -52,24 +49,46 @@ async function resolveShare(key: string, password?: string): Promise<ShareRow> {
   `;
   const row = rows[0];
 
-  // Same message for "wrong key" and "expired" so a link cannot be probed.
   if (!row) throw notFound('This link is no longer available.');
   if (row.expires_at && row.expires_at.getTime() < Date.now()) {
     throw notFound('This link is no longer available.');
   }
-
-  if (row.password_hash) {
-    if (!password) throw unauthorized('This link is password protected.');
-    if (!(await verifyPassword(row.password_hash, password))) {
-      throw forbidden('That password is not correct.');
-    }
-  }
-
   return row;
 }
 
-/** Every asset reachable through a share, owner-scoped so a stale album
- *  membership can never leak someone else's photo. */
+/**
+ * Checks the password a viewer typed.
+ *
+ * It travels in a header rather than a cookie so the same endpoint works from
+ * the web viewer and from `curl` without any session machinery. This is the
+ * only place a password is verified; media requests carry the share token the
+ * answer hands back instead, so the costly hash runs once per visit rather
+ * than once per thumbnail.
+ */
+async function checkPassword(share: ShareRow, password?: string): Promise<void> {
+  if (!share.password_hash) return;
+  if (!password) throw unauthorized('This link is password protected.');
+  if (!(await verifyPassword(share.password_hash, password))) {
+    throw forbidden('That password is not correct.');
+  }
+}
+
+/** Media access: open links need nothing, protected ones a share token. */
+async function checkShareToken(share: ShareRow, request: FastifyRequest): Promise<void> {
+  if (!share.password_hash) return;
+  const token = (request.query as Record<string, unknown> | undefined)?.st;
+  if (typeof token !== 'string' || !(await verifyShareToken(token, share.id))) {
+    throw unauthorized('This link is password protected.');
+  }
+}
+
+/**
+ * Every asset reachable through a share.
+ *
+ * Owner-scoped: a public link exposes only its creator's photos. Collaborators
+ * can add their own photos to a shared album, but agreeing to share with the
+ * album's members is not agreeing to publish to anyone holding a URL.
+ */
 async function shareAssets(share: ShareRow): Promise<AssetRow[]> {
   if (share.asset_id) {
     return sql<AssetRow[]>`
@@ -77,7 +96,7 @@ async function shareAssets(share: ShareRow): Promise<AssetRow[]> {
       FROM assets a
       LEFT JOIN asset_exif e ON e.asset_id = a.id
       LEFT JOIN external_libraries l ON l.id = a.library_id
-      WHERE a.id = ${share.asset_id} AND a.deleted_at IS NULL
+      WHERE a.id = ${share.asset_id} AND a.owner_id = ${share.owner_id} AND a.deleted_at IS NULL
     `;
   }
   return sql<AssetRow[]>`
@@ -86,51 +105,41 @@ async function shareAssets(share: ShareRow): Promise<AssetRow[]> {
     JOIN assets a ON a.id = aa.asset_id
     LEFT JOIN asset_exif e ON e.asset_id = a.id
     LEFT JOIN external_libraries l ON l.id = a.library_id
-    WHERE aa.album_id = ${share.album_id} AND a.deleted_at IS NULL
+    WHERE aa.album_id = ${share.album_id} AND a.owner_id = ${share.owner_id} AND a.deleted_at IS NULL
     ORDER BY a.taken_at DESC, a.id DESC
   `;
 }
 
-async function assertInShare(share: ShareRow, assetId: string): Promise<AssetRow> {
-  const assets = await shareAssets(share);
-  const match = assets.find((a) => a.id === assetId);
+/**
+ * One asset, if the share reaches it.
+ *
+ * A single lookup rather than loading the whole album and searching it: a
+ * grid of a few hundred thumbnails would otherwise load the album a few
+ * hundred times.
+ */
+async function assetInShare(share: ShareRow, assetId: string): Promise<AssetRow> {
+  const membership = share.asset_id
+    ? sql`a.id = ${share.asset_id}`
+    : sql`EXISTS (SELECT 1 FROM album_assets aa WHERE aa.album_id = ${share.album_id} AND aa.asset_id = a.id)`;
+
+  const rows = await sql<AssetRow[]>`
+    SELECT ${sql.unsafe(assetColumnsWithExif())}, l.path AS library_root
+    FROM assets a
+    LEFT JOIN asset_exif e ON e.asset_id = a.id
+    LEFT JOIN external_libraries l ON l.id = a.library_id
+    WHERE a.id = ${assetId}
+      AND a.owner_id = ${share.owner_id}
+      AND a.deleted_at IS NULL
+      AND ${membership}
+  `;
+  const match = rows[0];
   if (!match) throw notFound('That photo is not part of this share.');
   return match;
 }
 
-async function streamPublic(
-  reply: FastifyReply,
-  absolutePath: string,
-  contentType: string,
-  rangeHeader?: string,
-): Promise<FastifyReply> {
-  let info;
-  try {
-    info = await stat(absolutePath);
-  } catch {
-    throw notFound('That file is not available yet.');
-  }
-
-  reply.header('Content-Type', contentType);
-  reply.header('Accept-Ranges', 'bytes');
-  reply.header('Cache-Control', 'public, max-age=3600');
-
-  if (rangeHeader) {
-    const match = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader.trim());
-    if (match) {
-      const start = Number(match[1] || 0);
-      const end = match[2] ? Math.min(Number(match[2]), info.size - 1) : info.size - 1;
-      if (!Number.isNaN(start) && !Number.isNaN(end) && start <= end && start < info.size) {
-        reply.header('Content-Range', `bytes ${start}-${end}/${info.size}`);
-        reply.header('Content-Length', end - start + 1);
-        return reply.code(206).send(createReadStream(absolutePath, { start, end }));
-      }
-    }
-  }
-
-  reply.header('Content-Length', info.size);
-  return reply.send(createReadStream(absolutePath));
-}
+/** A password-protected photo must never land in a shared proxy cache. */
+const shareCacheControl = (share: ShareRow) =>
+  share.password_hash ? 'private, max-age=3600' : 'public, max-age=3600';
 
 const passwordHeader = (request: { headers: Record<string, unknown> }): string | undefined => {
   const value = request.headers['x-share-password'];
@@ -217,37 +226,8 @@ export async function publicShareRoutes(app: FastifyInstance): Promise<void> {
   /** Metadata only — lets the viewer render a password prompt before loading. */
   app.get('/:key/info', async (request) => {
     const { key } = keyParam.parse(request.params);
-    const rows = await sql<ShareRow[]>`
-      SELECT id, key, owner_id, album_id, asset_id, password_hash, allow_download,
-             expires_at, view_count, created_at
-      FROM share_links WHERE key = ${key}
-    `;
-    const row = rows[0];
-    if (!row || (row.expires_at && row.expires_at.getTime() < Date.now())) {
-      throw notFound('This link is no longer available.');
-    }
+    const share = await findShare(key);
 
-    let title = 'Shared photo';
-    if (row.album_id) {
-      const albums = await sql<{ name: string }[]>`SELECT name FROM albums WHERE id = ${row.album_id}`;
-      title = albums[0]?.name ?? 'Shared album';
-    }
-
-    return {
-      requiresPassword: row.password_hash !== null,
-      allowDownload: row.allow_download,
-      isAlbum: row.album_id !== null,
-      title,
-    };
-  });
-
-  app.get('/:key', async (request) => {
-    const { key } = keyParam.parse(request.params);
-    const share = await resolveShare(key, passwordHeader(request));
-
-    await sql`UPDATE share_links SET view_count = view_count + 1 WHERE id = ${share.id}`;
-
-    const assets = await shareAssets(share);
     let title = 'Shared photo';
     if (share.album_id) {
       const albums = await sql<{ name: string }[]>`SELECT name FROM albums WHERE id = ${share.album_id}`;
@@ -255,48 +235,82 @@ export async function publicShareRoutes(app: FastifyInstance): Promise<void> {
     }
 
     return {
-      title,
+      requiresPassword: share.password_hash !== null,
       allowDownload: share.allow_download,
       isAlbum: share.album_id !== null,
-      assets: assets.map(toAssetDto),
+      title,
     };
   });
 
-  app.get('/:key/asset/:assetId/thumbnail', async (request, reply) => {
-    const { key, assetId } = assetParam.parse(request.params);
-    const share = await resolveShare(key, passwordHeader(request));
-    const asset = await assertInShare(share, assetId);
-    return streamPublic(
-      reply,
-      join(thumbsPath(thumbDir(asset.owner_id, asset.id)), 'thumb.webp'),
-      'image/webp',
-    );
-  });
+  /**
+   * The share's contents, and for a protected link the token its media URLs
+   * need. Password attempts are throttled per address: a four-character
+   * password is otherwise a short afternoon's work for a script.
+   */
+  app.get(
+    '/:key',
+    {
+      config: {
+        rateLimit: {
+          max: 10,
+          timeWindow: '1 minute',
+          // Only guesses count, so reloading an open link is never throttled.
+          allowList: (request: FastifyRequest) => passwordHeader(request) === undefined,
+        },
+      },
+    },
+    async (request) => {
+      const { key } = keyParam.parse(request.params);
+      const share = await findShare(key);
+      await checkPassword(share, passwordHeader(request));
 
-  app.get('/:key/asset/:assetId/preview', async (request, reply) => {
-    const { key, assetId } = assetParam.parse(request.params);
-    const share = await resolveShare(key, passwordHeader(request));
-    const asset = await assertInShare(share, assetId);
-    return streamPublic(
-      reply,
-      join(thumbsPath(thumbDir(asset.owner_id, asset.id)), 'preview.webp'),
-      'image/webp',
-    );
-  });
+      await sql`UPDATE share_links SET view_count = view_count + 1 WHERE id = ${share.id}`;
+
+      const assets = await shareAssets(share);
+      let title = 'Shared photo';
+      if (share.album_id) {
+        const albums = await sql<{ name: string }[]>`SELECT name FROM albums WHERE id = ${share.album_id}`;
+        title = albums[0]?.name ?? 'Shared album';
+      }
+
+      return {
+        title,
+        allowDownload: share.allow_download,
+        isAlbum: share.album_id !== null,
+        assets: assets.map(toAssetDto),
+        token: share.password_hash ? await signShareToken(share.id, share.expires_at) : null,
+      };
+    },
+  );
+
+  const derivative = (file: 'thumb.webp' | 'preview.webp') =>
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { key, assetId } = assetParam.parse(request.params);
+      const share = await findShare(key);
+      await checkShareToken(share, request);
+      const asset = await assetInShare(share, assetId);
+      return sendFile(reply, join(thumbsPath(thumbDir(asset.owner_id, asset.id)), file), 'image/webp', {
+        cacheControl: shareCacheControl(share),
+      });
+    };
+
+  app.get('/:key/asset/:assetId/thumbnail', derivative('thumb.webp'));
+  app.get('/:key/asset/:assetId/preview', derivative('preview.webp'));
 
   app.get('/:key/asset/:assetId/original', async (request, reply) => {
     const { key, assetId } = assetParam.parse(request.params);
-    const share = await resolveShare(key, passwordHeader(request));
+    const share = await findShare(key);
+    await checkShareToken(share, request);
     if (!share.allow_download) throw forbidden('Downloads are disabled for this link.');
 
-    const asset = await assertInShare(share, assetId);
-    reply.header(
-      'Content-Disposition',
-      `attachment; filename="${asset.original_filename.replace(/["\\]/g, '')}"`,
-    );
+    const asset = await assetInShare(share, assetId);
     const absolute = asset.library_root
       ? originalPathFor(asset.storage_path, externalRootPath(asset.library_root))
       : libraryPath(asset.storage_path);
-    return streamPublic(reply, absolute, asset.mime_type, request.headers.range);
+    return sendFile(reply, absolute, asset.mime_type, {
+      rangeHeader: request.headers.range,
+      downloadName: asset.original_filename,
+      cacheControl: shareCacheControl(share),
+    });
   });
 }

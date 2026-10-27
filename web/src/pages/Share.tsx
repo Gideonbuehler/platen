@@ -12,6 +12,7 @@ interface ShareContents {
   allowDownload: boolean;
   isAlbum: boolean;
   assets: Asset[];
+  token: string | null;
 }
 
 /**
@@ -131,7 +132,7 @@ export function SharePage() {
     );
   }
 
-  const { assets } = contents;
+  const { assets, token } = contents;
 
   return (
     <div className="share">
@@ -152,7 +153,7 @@ export function SharePage() {
         onOpen={(asset) => setLightboxIndex(assets.findIndex((a) => a.id === asset.id))}
         selection={new Set()}
         onSelectionChange={() => {}}
-        thumbnailUrl={(asset) => shareThumbnailUrl(key!, asset.id)}
+        thumbnailUrl={(asset) => shareThumbnailUrl(key!, asset.id, token)}
         empty={<p className="share-empty">There is nothing in this share yet.</p>}
       />
 
@@ -162,9 +163,9 @@ export function SharePage() {
           index={lightboxIndex}
           onIndexChange={setLightboxIndex}
           onClose={() => setLightboxIndex(null)}
-          previewUrl={(asset) => sharePreviewUrl(key!, asset.id)}
-          originalUrl={(asset) => shareOriginalUrl(key!, asset.id)}
-          downloadUrl={(asset) => shareOriginalUrl(key!, asset.id)}
+          previewUrl={(asset) => sharePreviewUrl(key!, asset.id, token)}
+          originalUrl={(asset) => shareOriginalUrl(key!, asset.id, token)}
+          downloadUrl={(asset) => shareOriginalUrl(key!, asset.id, token)}
           readOnly
           allowDownload={contents.allowDownload}
         />

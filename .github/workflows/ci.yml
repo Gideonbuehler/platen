@@ -15,6 +15,24 @@ jobs:
     name: Server and web
     runs-on: ubuntu-latest
 
+    # The integration tests run the real app against the same Postgres image
+    # the compose stack ships, so a migration or query that only works on a
+    # developer's machine fails here instead.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: platen
+          POSTGRES_PASSWORD: platen
+          POSTGRES_DB: platen_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U platen -d platen_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
     steps:
       - uses: actions/checkout@v4
 
@@ -35,8 +53,18 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      # Covers the mobile app's sources too; it needs no mobile install,
+      # since these rules do not load types.
+      - name: Lint
+        run: npm run lint
+
       - name: Test
         run: npm test
+
+      - name: Integration tests
+        run: npm run test:integration
+        env:
+          TEST_DATABASE_URL: postgres://platen:platen@localhost:5432/platen_test
 
       - name: Build
         run: npm run build
@@ -61,6 +89,10 @@ jobs:
       - name: Typecheck
         working-directory: mobile
         run: npx tsc --noEmit
+
+      - name: Test
+        working-directory: mobile
+        run: npm test
 
       # Typechecking is not enough on its own here. The app has twice passed
       # tsc while being unable to start at all: once with a missing expo-asset,

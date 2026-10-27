@@ -113,6 +113,12 @@ async function refreshAccessToken(): Promise<string | null> {
       });
 
       if (!response.ok) {
+        // Another tab may have rotated the same token a moment earlier: the
+        // server honours a refresh token exactly once, and tabs share storage.
+        // Its new pair is already saved, so use that rather than sign out.
+        const current = readAuth();
+        if (current && current.refreshToken !== auth.refreshToken) return current.accessToken;
+
         writeAuth(null);
         announce(false);
         return null;
@@ -201,7 +207,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 // Media URLs
 //
 // <img> cannot send an Authorization header, so media URLs carry the access
-// token as a query parameter. The server only honours it on GET media routes.
+// token as a query parameter. The server honours it on media routes only.
 // ---------------------------------------------------------------------------
 
 /**
@@ -239,12 +245,22 @@ export const assetDownloadUrl = (id: string, version?: string) =>
 /** Face crops never change once written, so they can be cached hard. */
 export const faceThumbnailUrl = (faceId: string) => mediaUrl(`/people/faces/${faceId}/thumbnail`);
 
-export const shareThumbnailUrl = (key: string, id: string) =>
-  `/api/public/${key}/asset/${id}/thumbnail`;
-export const sharePreviewUrl = (key: string, id: string) =>
-  `/api/public/${key}/asset/${id}/preview`;
-export const shareOriginalUrl = (key: string, id: string) =>
-  `/api/public/${key}/asset/${id}/original`;
+/**
+ * Public share media. A password-protected link's media needs the share token
+ * the contents request returned: <img> cannot send the password header, and
+ * the server only checks the password itself once per visit.
+ */
+function shareMediaUrl(key: string, id: string, kind: string, token?: string | null): string {
+  const path = `/api/public/${key}/asset/${id}/${kind}`;
+  return token ? `${path}?st=${encodeURIComponent(token)}` : path;
+}
+
+export const shareThumbnailUrl = (key: string, id: string, token?: string | null) =>
+  shareMediaUrl(key, id, 'thumbnail', token);
+export const sharePreviewUrl = (key: string, id: string, token?: string | null) =>
+  shareMediaUrl(key, id, 'preview', token);
+export const shareOriginalUrl = (key: string, id: string, token?: string | null) =>
+  shareMediaUrl(key, id, 'original', token);
 
 // ---------------------------------------------------------------------------
 // Typed endpoints
@@ -450,7 +466,14 @@ export const api = {
       { anonymous: true },
     ),
   shareContents: (key: string, password?: string) =>
-    request<{ title: string; allowDownload: boolean; isAlbum: boolean; assets: Asset[] }>(
+    request<{
+      title: string;
+      allowDownload: boolean;
+      isAlbum: boolean;
+      assets: Asset[];
+      /** Present for password-protected links; media URLs must carry it. */
+      token: string | null;
+    }>(
       `/public/${key}`,
       { anonymous: true, headers: password ? { 'X-Share-Password': password } : undefined },
     ),

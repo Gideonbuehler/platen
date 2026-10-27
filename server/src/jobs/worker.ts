@@ -33,7 +33,6 @@ const SCAN_CHECK_MS = 10 * 60 * 1000;
 export function startWorker(log: FastifyBaseLogger): () => Promise<void> {
   let running = true;
   let inFlight = 0;
-  let loopDone: Promise<void>;
 
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -106,10 +105,16 @@ export function startWorker(log: FastifyBaseLogger): () => Promise<void> {
    * restarts. The handler does not re-arm itself precisely so that this stays
    * the single scheduling point.
    */
-  const armPurge = () =>
+  const armPurge = () => {
     void enqueue('trash-purge', {}, 'trash-purge:recurring').catch((err) =>
       log.error({ err }, 'could not schedule trash purge'),
     );
+    // A safety net under the job queued when a user is deleted, should that
+    // one fail or the server stop mid-purge. Finding nothing to do is free.
+    void enqueue('file-purge', {}, 'file-purge').catch((err) =>
+      log.error({ err }, 'could not schedule file purge'),
+    );
+  };
 
   armPurge();
   const purgeSchedule = setInterval(armPurge, PURGE_INTERVAL_MS);
@@ -140,7 +145,7 @@ export function startWorker(log: FastifyBaseLogger): () => Promise<void> {
   const sidecarSchedule = setInterval(armSidecarSweep, SIDECAR_SWEEP_MS);
 
   log.info(`Job worker ${WORKER_ID} started (concurrency ${config.JOB_CONCURRENCY}).`);
-  loopDone = loop();
+  const loopDone = loop();
 
   return async () => {
     running = false;

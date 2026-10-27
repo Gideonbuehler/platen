@@ -309,6 +309,7 @@ export type JobType =
   | 'face-detect'
   | 'library-scan'
   | 'trash-purge'
+  | 'file-purge'
   | 'sidecar'
   | 'sidecar-sweep';
 

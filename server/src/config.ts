@@ -12,6 +12,17 @@ const schema = z.object({
 
   PUBLIC_URL: z.string().url().default('http://localhost:3000'),
 
+  /**
+   * Which peers may set X-Forwarded-For. `true` trusts everyone, `false`
+   * no one, a number that many hops, anything else a comma-separated list of
+   * addresses, CIDRs or the presets loopback / linklocal / uniquelocal.
+   *
+   * The default covers a reverse proxy on the same host or LAN while ignoring
+   * the header from anyone reaching the server directly, who could otherwise
+   * claim a fresh IP on every request and walk past the rate limits.
+   */
+  TRUST_PROXY: z.string().default('loopback,linklocal,uniquelocal'),
+
   JWT_SECRET: z
     .string()
     .min(32, 'JWT_SECRET must be at least 32 characters. Generate one with: openssl rand -hex 32'),

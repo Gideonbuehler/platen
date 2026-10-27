@@ -1,6 +1,5 @@
-import { createReadStream } from 'node:fs';
-import { readFile, stat } from 'node:fs/promises';
-import { basename, join } from 'node:path';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import type {
@@ -15,19 +14,21 @@ import { sql } from '../db/index.js';
 import { badRequest, forbidden, notFound, quotaExceeded } from '../lib/errors.js';
 import { assetColumns, assetColumnsWithExif, toAssetDto, type AssetRow } from '../lib/mappers.js';
 import { classify } from '../lib/media-types.js';
+import { queryBoolean } from '../lib/query.js';
+import { IMMUTABLE_PRIVATE, sendFile } from '../lib/send-file.js';
 import {
   buildStoragePath,
   commitUpload,
+  discardOriginal,
   discardUpload,
   externalRootPath,
-  fileExists,
   libraryPath,
   originalPathFor,
   stageUpload,
   thumbDir,
   thumbsPath,
 } from '../lib/storage.js';
-import { auth, requireAuth } from '../middleware/auth.js';
+import { auth, MEDIA_ROUTE, requireAuth } from '../middleware/auth.js';
 import { getCached, previewKey, setCached, thumbKey } from '../services/cache.js';
 import { enqueue } from '../jobs/queue.js';
 
@@ -54,9 +55,9 @@ function decodeCursor(cursor: string): { takenAt: Date; id: string } | null {
 const filterSchema = z.object({
   albumId: z.string().uuid().optional(),
   personId: z.string().uuid().optional(),
-  favorite: z.coerce.boolean().optional(),
-  archived: z.coerce.boolean().optional(),
-  trashed: z.coerce.boolean().optional(),
+  favorite: queryBoolean.optional(),
+  archived: queryBoolean.optional(),
+  trashed: queryBoolean.optional(),
   cursor: z.string().optional(),
   /**
    * Start the page at this instant instead of at the newest asset.
@@ -90,65 +91,6 @@ function buildWhere(userId: string, f: Filters) {
   }
 
   return parts.reduce((acc, part) => sql`${acc} AND ${part}`);
-}
-
-/** Sends a file with range support — required for seekable <video>. */
-async function sendFile(
-  reply: FastifyReply,
-  absolutePath: string,
-  contentType: string,
-  options: { rangeHeader?: string; downloadName?: string; immutable?: boolean } = {},
-): Promise<FastifyReply> {
-  let info;
-  try {
-    info = await stat(absolutePath);
-  } catch {
-    throw notFound('That file is not available yet.');
-  }
-
-  reply.header('Content-Type', contentType);
-  reply.header('Accept-Ranges', 'bytes');
-  // Derivatives are content-addressed by asset id and never change in place,
-  // so they can be cached hard. Originals get the same treatment.
-  reply.header('Cache-Control', options.immutable ? 'private, max-age=31536000, immutable' : 'private, max-age=3600');
-  reply.header('ETag', `"${info.size}-${info.mtimeMs}"`);
-
-  if (options.downloadName) {
-    const safe = basename(options.downloadName).replace(/["\\]/g, '');
-    reply.header('Content-Disposition', `attachment; filename="${safe}"`);
-  }
-
-  const range = options.rangeHeader;
-  if (range) {
-    const match = /^bytes=(\d*)-(\d*)$/.exec(range.trim());
-    if (match) {
-      const startRaw = match[1];
-      const endRaw = match[2];
-      let start: number;
-      let end: number;
-
-      if (startRaw === '' && endRaw !== '') {
-        // Suffix range: "bytes=-500" means the last 500 bytes.
-        start = Math.max(0, info.size - Number(endRaw));
-        end = info.size - 1;
-      } else {
-        start = Number(startRaw || 0);
-        end = endRaw ? Math.min(Number(endRaw), info.size - 1) : info.size - 1;
-      }
-
-      if (Number.isNaN(start) || Number.isNaN(end) || start > end || start >= info.size) {
-        reply.header('Content-Range', `bytes */${info.size}`);
-        return reply.code(416).send();
-      }
-
-      reply.header('Content-Range', `bytes ${start}-${end}/${info.size}`);
-      reply.header('Content-Length', end - start + 1);
-      return reply.code(206).send(createReadStream(absolutePath, { start, end }));
-    }
-  }
-
-  reply.header('Content-Length', info.size);
-  return reply.send(createReadStream(absolutePath));
 }
 
 async function loadOwnedAsset(assetId: string, userId: string): Promise<AssetRow> {
@@ -255,19 +197,25 @@ export async function assetRoutes(app: FastifyInstance): Promise<void> {
 
       const checksumBuffer = Buffer.from(staged.checksum, 'hex');
 
-      const duplicates = await sql<AssetRow[]>`
-        SELECT ${sql.unsafe(assetColumnsWithExif())}
-        FROM assets a
-        LEFT JOIN asset_exif e ON e.asset_id = a.id
-        WHERE a.owner_id = ${userId} AND a.checksum = ${checksumBuffer}
-      `;
-      const duplicate = duplicates[0];
-      if (duplicate) {
+      /** An existing copy of these bytes, restored from the trash if it was there. */
+      const existingCopy = async (): Promise<AssetRow | undefined> => {
+        const duplicates = await sql<AssetRow[]>`
+          SELECT ${sql.unsafe(assetColumnsWithExif())}
+          FROM assets a
+          LEFT JOIN asset_exif e ON e.asset_id = a.id
+          WHERE a.owner_id = ${userId} AND a.checksum = ${checksumBuffer}
+        `;
+        const duplicate = duplicates[0];
         // Undelete if it was sitting in the trash; the user clearly wants it.
-        if (duplicate.deleted_at) {
+        if (duplicate?.deleted_at) {
           await sql`UPDATE assets SET deleted_at = NULL WHERE id = ${duplicate.id}`;
           duplicate.deleted_at = null;
         }
+        return duplicate;
+      };
+
+      const duplicate = await existingCopy();
+      if (duplicate) {
         await discardUpload(staged.tmpPath);
         return reply.send({ asset: toAssetDto(duplicate), duplicate: true } satisfies UploadResult);
       }
@@ -284,20 +232,38 @@ export async function assetRoutes(app: FastifyInstance): Promise<void> {
 
       await commitUpload(staged.tmpPath, storagePath);
 
-      const inserted = await sql<AssetRow[]>`
-        INSERT INTO assets (
-          id, owner_id, checksum, type, original_filename, storage_path,
-          mime_type, file_size, taken_at, device_id, device_asset_id
-        ) VALUES (
-          ${assetId}, ${userId}, ${checksumBuffer}, ${type}, ${filename}, ${storagePath},
-          ${mime}, ${staged.size}, ${takenAt}, ${readField('deviceId') ?? null},
-          ${readField('deviceAssetId') ?? null}
-        )
-        RETURNING ${sql.unsafe(assetColumns())}
-      `;
+      // From here the bytes sit in the library, so any failure has to take
+      // them back out: an original with no row is invisible to the app and
+      // never cleaned up by anything.
+      let inserted: AssetRow[];
+      try {
+        // ON CONFLICT covers an identical upload (the web uploader and the
+        // phone sending the same photo, say) that landed after the duplicate
+        // check above but before this insert.
+        inserted = await sql<AssetRow[]>`
+          INSERT INTO assets (
+            id, owner_id, checksum, type, original_filename, storage_path,
+            mime_type, file_size, taken_at, device_id, device_asset_id
+          ) VALUES (
+            ${assetId}, ${userId}, ${checksumBuffer}, ${type}, ${filename}, ${storagePath},
+            ${mime}, ${staged.size}, ${takenAt}, ${readField('deviceId') ?? null},
+            ${readField('deviceAssetId') ?? null}
+          )
+          ON CONFLICT (owner_id, checksum) DO NOTHING
+          RETURNING ${sql.unsafe(assetColumns())}
+        `;
+      } catch (err) {
+        await discardOriginal(storagePath);
+        throw err;
+      }
 
       const row = inserted[0];
-      if (!row) throw badRequest('Could not record the upload.');
+      if (!row) {
+        await discardOriginal(storagePath);
+        const winner = await existingCopy();
+        if (!winner) throw badRequest('Could not record the upload. Please try again.');
+        return reply.send({ asset: toAssetDto(winner), duplicate: true } satisfies UploadResult);
+      }
 
       await enqueue('metadata', { assetId }, `metadata:${assetId}`);
 
@@ -485,7 +451,7 @@ export async function assetRoutes(app: FastifyInstance): Promise<void> {
     if (cached) {
       reply.header('Content-Type', 'image/webp');
       reply.header('Content-Length', cached.byteLength);
-      reply.header('Cache-Control', 'private, max-age=31536000, immutable');
+      reply.header('Cache-Control', IMMUTABLE_PRIVATE);
       reply.header('X-Cache', 'HIT');
       return reply.send(cached);
     }
@@ -501,32 +467,32 @@ export async function assetRoutes(app: FastifyInstance): Promise<void> {
 
       reply.header('Content-Type', 'image/webp');
       reply.header('Content-Length', bytes.byteLength);
-      reply.header('Cache-Control', 'private, max-age=31536000, immutable');
+      reply.header('Cache-Control', IMMUTABLE_PRIVATE);
       reply.header('X-Cache', 'MISS');
       return reply.send(bytes);
     } catch {
-      return sendFile(reply, path, 'image/webp', { immutable: true });
+      return sendFile(reply, path, 'image/webp', { cacheControl: IMMUTABLE_PRIVATE });
     }
   };
 
-  app.get('/:id/thumbnail', async (request, reply) => {
+  app.get('/:id/thumbnail', MEDIA_ROUTE, async (request, reply) => {
     const { userId } = auth(request);
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
     const row = await loadOwnedAsset(id, userId);
     return sendDerivative(reply, row, 'thumb.webp', thumbKey(row.id));
   });
 
-  app.get('/:id/preview', async (request, reply) => {
+  app.get('/:id/preview', MEDIA_ROUTE, async (request, reply) => {
     const { userId } = auth(request);
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
     const row = await loadOwnedAsset(id, userId);
     return sendDerivative(reply, row, 'preview.webp', previewKey(row.id));
   });
 
-  app.get('/:id/original', async (request, reply) => {
+  app.get('/:id/original', MEDIA_ROUTE, async (request, reply) => {
     const { userId } = auth(request);
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
-    const query = z.object({ download: z.coerce.boolean().optional() }).parse(request.query);
+    const query = z.object({ download: queryBoolean.optional() }).parse(request.query);
     const row = await loadOwnedAsset(id, userId);
 
     const absolute = row.library_root
@@ -536,7 +502,7 @@ export async function assetRoutes(app: FastifyInstance): Promise<void> {
     return sendFile(reply, absolute, row.mime_type, {
       rangeHeader: request.headers.range,
       downloadName: query.download ? row.original_filename : undefined,
-      immutable: true,
+      cacheControl: IMMUTABLE_PRIVATE,
     });
   });
 

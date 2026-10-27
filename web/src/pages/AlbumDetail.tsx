@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Asset } from '@platen/shared';
@@ -39,7 +39,7 @@ export function AlbumDetailPage() {
     enabled: Boolean(id),
   });
 
-  const assets = page?.items ?? [];
+  const assets = useMemo(() => page?.items ?? [], [page]);
 
   const removeFromAlbum = useMutation({
     mutationFn: (assetIds: string[]) => api.removeFromAlbum(id!, assetIds),

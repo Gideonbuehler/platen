@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Asset } from '@platen/shared';
@@ -52,7 +52,7 @@ export function PersonDetailPage() {
     },
   });
 
-  const assets = page?.items ?? [];
+  const assets = useMemo(() => page?.items ?? [], [page]);
 
   const openAt = useCallback(
     (asset: Asset) => setLightboxIndex(assets.findIndex((a) => a.id === asset.id)),
